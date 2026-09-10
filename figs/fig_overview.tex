@@ -24,7 +24,7 @@
   {Monitor\\[-2pt]{\tiny $\shat_i$ vs.\ $\shat_{t_i}$ on $F_{i+1:n}$}};
 
 % ================= top band: Type 1 =================
-\node[sub1] (bel) at (4.2,4.4) {beliefs $\calB_t$\\[-2pt]{\tiny $(\attr,\loc,\tobs,$}\\[-3pt]{\tiny $\prov,\vol,\stat)$}};
+\node[sub1] (bel) at (4.2,4.4) {beliefs $\calB_t$\\[-2pt]{\tiny $\iota=(\type,\anchor)$}\\[-3pt]{\tiny $c=(\props,\loc,\tobs,\stat)$}};
 \node[sub1] (est) at (7.7,4.4) {state estimate\\[-1pt]{\scriptsize $\shat_t=(\sA_t,\sP_t,\sM_t)$}};
 \begin{scope}[on background layer]
   \node[band1, fit=(bel)(est)] (band1) {};
