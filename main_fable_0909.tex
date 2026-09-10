@@ -115,7 +115,8 @@ Let $\mathrm{LLM}(y\mid x)$ denote the probability that an LLM outputs token seq
 \label{sec:states}
 
 \paragraph{Structured states.}
-We represent states and state estimates as structured key-value records. Let $\calF$ be a universe of typed \emph{feature paths} (e.g., \texttt{agent.possessions.wood}, \texttt{percept.entities.cow}) with value domains $\calV$. A (partial) state record is a partial assignment $\shat:\calF\rightharpoonup\calV$, and $\shat|_{F}$ denotes its restriction to $F\subseteq\calF$. The universe is partitioned into three components:
+We represent states and state estimates as structured key-value records. Let $\calF$ be a universe of typed \emph{feature paths} (e.g., \texttt{agent.possessions.wood}, \texttt{percept.entities.cow}) with value domains $\calV$. A (partial) state record is a (partial) assignment $\shat:\calF\rightharpoonup\calV$.
+The universe is partitioned into three components:
 \begin{itemize}[leftmargin=1.5em,itemsep=1pt]
 \item $\FA$, the \emph{agent state}: what the agent possesses and its own condition (possessions, held tools, health, pose). These features are exposed in every observation.
 \item $\FP$, the \emph{perceptual field}: elements of the world that are currently perceivable by the agent (entities, resources, and terrain within sensing range). These features are exposed in the observation but are transient: an element leaves $\FP$ as soon as it leaves sensing range.
@@ -124,10 +125,11 @@ We represent states and state estimates as structured key-value records. Let $\c
 Accordingly, an observation is a record over the first two components, $o_t:\FA\cup\FP\rightharpoonup\calV$, whereas the true state $s_t$ additionally contains all world elements outside the perceptual field.
 A state estimate is a record
 \begin{equation}
-\shat_t=(\sA_t,\sP_t,\sM_t),\qquad \sA_t=o_t|_{\FA},\quad \sP_t=o_t|_{\FP},\quad \sM_t=\Read(\calM_t,\cdot),
+\shat_t=(\sA_t,\sP_t,\sM_t),\qquad \sA_t=o_t|_{\FA},\quad \sP_t=o_t|_{\FP},\quad 
+\sM_t=\Read(\calM_t,\cdot),
 \label{eq:state-estimate}
 \end{equation}
-where the first two components are copied from the current observation and the third is read from a memory store $\calM_t$ (Section~\ref{sec:type1}). 
+where $\cdot|_{F}$ denotes the restriction of a record to $F\subseteq\calF$: the first two components are copied from the current observation. The third is read from a \emph{memory store} $\calM_t$, maintained by the memory of Section~\ref{sec:type1}, which holds the agent's current claims about the features in $\FM$---world elements perceived at some earlier step and since left behind, together with elements asserted by the task description---each recorded with its location, the time at which it was last observed, and whether it is still believed to be there. The dot in $\Read(\calM_t,\cdot)$ marks a second argument left open here: a read is always relative to a \emph{context}, the goal or the option on whose behalf the estimate is being built, and it returns only those claims that the context makes relevant. Thus $\sA_t$ and $\sP_t$ are determined by $o_t$ alone, whereas $\sM_t$ depends on both the store and the module reading it; Section~\ref{sec:type1-est} defines $\calM_t$ and $\Read$ and fills in this argument at each call site.
 
 
 \begin{figure}[t]
@@ -139,11 +141,8 @@ where the first two components are copied from the current observation and the t
 
 
 \paragraph{Terminology.}
-We use the following terms for the video-game setting, chosen to be domain-neutral.
-\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
-\item An \emph{element} is any world entity the agent can refer to: an object, a resource deposit, a creature, a structure, or a spatial \emph{region}. Elements have a \emph{type}, attributes, and a location.
-\item A \emph{locator} $\loc(\cdot)$ is the information an option needs to re-access an element: coordinates in a 3D world, a room in a building, a path or address in a software environment. Locators are the bridge between remembered elements and executable options, since the control primitives of $\calA$ navigate by locator.
-\end{itemize}
+We use one term throughout, chosen to be domain-neutral. An \emph{element} is any world entity the agent can refer to: an object, a resource deposit, a creature, a structure, or a spatial region. An element has a type, attributes, and a location $\loc(\cdot)$, the information an option needs to re-access it: coordinates in a 3D world, a room in a building, a path or address in a software environment.
+
 In this and the following section, observations are structured records provided by the environment API. The extension to raw video observations, where $\sA_t$ and $\sP_t$ must themselves be inferred from pixels, is deferred to a later section; the state representation above is designed so that this extension changes only how $o_t$ is produced, not how it is consumed.
 
 \subsection{Task structure}
@@ -153,10 +152,10 @@ In this and the following section, observations are structured records provided 
 A task is a triple $(g,\calE,s_0)$: a natural-language goal $g$ with a success predicate $\mathrm{succ}_g:\calS\to\{0,1\}$ evaluated by the environment on the true state; an \emph{environment instance} $\calE$, a concrete world (in a procedurally generated game, a seed and the content generated from it); and an initial state $s_0$. Since the three are fixed together, we use \emph{task}, \emph{instance}, and \emph{goal} as synonyms and denote the task by $g$.
 
 \paragraph{Episodes.}
-The agent executes $K$ episodes of the task in sequence. Episode $k$ starts from $s_0$ in $\calE$ and runs until $\mathrm{succ}_g(s_t)=1$ or a budget is exhausted; it is scored by whether the success predicate was met. Every episode is executed in the same instance from the same initial state. Consequently, a world element found at a locator in episode $k$ exists at that locator in episode $k+1$ unless the agent consumed it, and element-level knowledge (as opposed to knowledge about element types) is transferable across episodes. This persistence is assumed throughout.
+The agent executes $K$ episodes of the task in sequence. Episode $k$ starts from $s_0$ in $\calE$ and runs until $\mathrm{succ}_g(s_t)=1$ or a budget is exhausted; it is scored by whether the success predicate was met. Every episode is executed in the same instance from the same initial state. Consequently, a world element found at a location in episode $k$ exists at that location in episode $k+1$ unless the agent consumed it, and element-level knowledge (as opposed to knowledge about element types) is transferable across episodes. This persistence is assumed throughout.
 
 
-\section{State Memory: Estimation over Options}
+\section{Memory for State Estimation}
 \label{sec:type1}
 
 \begin{figure}[tb]
@@ -166,14 +165,14 @@ The agent executes $K$ episodes of the task in sequence. Episode $k$ starts from
 \label{fig:overview}
 \end{figure}
 
-This section develops the memory that maintains the state estimate $\shat_t$ (\emph{Type 1 memory}; Figure~\ref{fig:overview}, top). It remembers the world: its contents are claims about world elements, and its lifetime is one episode, since the true state of a persistent instance is reset to $s_0$ at every episode start. Section~\ref{sec:type1-est} defines the memory and the operations by which it performs state estimation at the level of options. Section~\ref{sec:type1-plan} describes how planning and execution are performed on the maintained state estimate. Section~\ref{sec:type1-replan} describes replanning, which the maintained estimate makes possible.
+This section develops the memory that maintains the state estimate $\shat_t$ (\emph{Type 1 memory}; Figure~\ref{fig:overview}, top). It remembers the world: its contents are claims about world elements, and its lifetime is one episode, since the true state of a persistent instance is reset to $s_0$ at every episode start. Section~\ref{sec:type1-est} defines the memory and the operations by which it performs state estimation, which run at two rates: a rule-based update at every time step, and an LLM consolidation at every option termination. Section~\ref{sec:type1-plan} describes how planning and execution are performed on the maintained state estimate. Section~\ref{sec:type1-replan} describes replanning, which the maintained estimate makes possible.
 
-\subsection{Option-level state estimation}
+\subsection{State estimation at two rates}
 \label{sec:type1-est}
 \begin{figure}[t]
 \centering
 \input{figs/fig_estimation}
-\caption{The belief filter at its two rates. At every time step a rule-based update (\ref{eq:step}) folds the observation into the belief set: an element leaving the perceptual field becomes a belief, a re-observed element refreshes one, and a belief whose locator is in range with the element absent becomes \emph{unknown}. At every option termination an LLM consolidation (\ref{eq:consol}) performs what rules cannot: attributing consumption to the option that caused it, and abstracting accumulated coverage into region beliefs with negative content. Line style shows belief status: solid \emph{extant}, dashed \emph{unknown}, grey \emph{consumed}. Because the update is recursive, no observation history is retained, yet the lava locator written during $\omega_2$ is still available to execute $\omega_5$ three options later.}
+\caption{The belief filter at its two rates. At every time step a rule-based update (\ref{eq:step}) folds the observation into the belief set: an element leaving the perceptual field becomes a belief, a re-observed element refreshes one, and a belief whose location is in range with the element absent becomes \emph{unknown}. At every option termination an LLM consolidation (\ref{eq:consol}) performs what rules cannot: attributing consumption to the option that caused it, and abstracting accumulated coverage into region beliefs with negative content. Line style shows belief status: solid \emph{extant}, dashed \emph{unknown}, grey \emph{consumed}. Because the update is recursive, no observation history is retained, yet the lava location written during $\omega_2$ is still available to execute $\omega_5$ three options later.}
 \label{fig:estimation}
 \end{figure}
 
@@ -186,7 +185,7 @@ A belief is a claim about a single world element that is not currently in the pe
 b=(\attr,\loc,\tobs,\prov,\vol,\stat),
 \label{eq:belief}
 \end{equation}
-with fields: $\attr$, the element's attributes, comprising its type $\type(b)$, a unique identifier when the environment provides one, and mutable properties such as quantity; $\loc$, its locator; $\tobs=(k,t,i)$, the episode, time step, and option index of last observation; $\prov\in\{\mathrm{observed},\mathrm{given},\mathrm{imagined}\}$, whether the belief derives from an observation, from the task description, or from the planner's prediction; $\vol\in\{\mathrm{permanent},\mathrm{semi\text{-}permanent},\mathrm{volatile}\}$, the expected persistence of the element (terrain; a container or structure; a mobile creature), assigned from the per-type summary $S(\type)$ maintained by the across-episode memory; and $\stat\in\{\mathrm{extant},\mathrm{consumed},\mathrm{unknown}\}$, where \emph{consumed} means the agent has depleted or removed the element and \emph{unknown} that the belief has been contradicted by a subsequent observation. Staleness is not a status: it is handled at read time by discounting $\tobs$ against $\vol$. Regions are elements, so a belief can record spatial and negative knowledge (a region traversed and found to contain no element of a given type), which prevents the planner from proposing exploration of explored space.
+with fields: $\attr$, the element's attributes, comprising its type $\type(b)$, a unique identifier when the environment provides one, and mutable properties such as quantity; $\loc$, its location; $\tobs=(k,t,i)$, the episode, time step, and option index of last observation; $\prov\in\{\mathrm{observed},\mathrm{given},\mathrm{imagined}\}$, whether the belief derives from an observation, from the task description, or from the planner's prediction; $\vol\in\{\mathrm{permanent},\mathrm{semi\text{-}permanent},\mathrm{volatile}\}$, the expected persistence of the element (terrain; a container or structure; a mobile creature), assigned from the per-type summary $S(\type)$ maintained by the across-episode memory; and $\stat\in\{\mathrm{extant},\mathrm{consumed},\mathrm{unknown}\}$, where \emph{consumed} means the agent has depleted or removed the element and \emph{unknown} that the belief has been contradicted by a subsequent observation. 
 
 \begin{lifecycle}
 $\attr$ & step update on an element leaving $\FP$, initialization, or seeding & the type and identifier are fixed; the mutable properties are updated by the step update on re-observation and by consolidation on partial consumption \\
@@ -194,11 +193,11 @@ $\loc$ & same as $\attr$; absent for a \emph{given} belief with no stated locati
 $\tobs$ & same as $\attr$ & updated by the step update on every re-observation \\
 $\prov$ & \emph{observed} (step update, seeding) or \emph{given} (initialization) & \emph{given}\,$\to$\,\emph{observed} on first observation; \emph{imagined} beliefs are created only by the dynamics predictor inside the search tree and are discarded with it \\
 $\vol$ & from $S(\type)$ at creation & none within an episode; $S(\type)$ is revised between episodes (Section~\ref{sec:type1-type2}) \\
-$\stat$ & \emph{extant}, or \emph{unknown} for a \emph{given} belief without locator & \emph{extant}\,$\to$\,\emph{unknown} by the step update when $\loc$ is within sensing range and the element is absent, or by executor feedback; \emph{unknown}\,$\to$\,\emph{extant} on re-observation; \emph{extant}\,$\to$\,\emph{consumed} by consolidation when the option depleted the element; \emph{consumed} is terminal \\
+$\stat$ & \emph{extant}, or \emph{unknown} for a \emph{given} belief without a location & \emph{extant}\,$\to$\,\emph{unknown} by the step update when $\loc$ is within sensing range and the element is absent, or by executor feedback; \emph{unknown}\,$\to$\,\emph{extant} on re-observation; \emph{extant}\,$\to$\,\emph{consumed} by consolidation when the option depleted the element; \emph{consumed} is terminal \\
 \end{lifecycle}
 
 \paragraph{Store.}
-The Type 1 store at time $t$ is the belief set, $\calM_t=\calB_t$, keyed by $(\type,\loc)$. It holds no observation history: the step update below is recursive, so each observation is folded in once and then discarded. The per-option record that the planner and the across-episode memory require is the option trace of Section~\ref{sec:type1-plan}, which Type 1 writes but does not read.
+The Type 1 store at time $t$ is the belief set, $\calM_t=\calB_t$, keyed by $(\type,\loc)$. It holds no observation history: the step update below is recursive, so each observation is folded in once and then discarded. 
 
 \paragraph{Initialization.}
 At $t=0$ of episode $k$,
@@ -206,7 +205,7 @@ At $t=0$ of episode $k$,
 \calB_0=\{b:\prov(b)=\mathrm{given}\}\;\cup\;\mathrm{Seed}_k,
 \label{eq:init}
 \end{equation}
-where the first term enters every element asserted by the task description as a belief with its stated locator, if any, and $\mathrm{Seed}_k$ is a set of beliefs retained from the end of episode $k-1$ ($\mathrm{Seed}_1=\emptyset$). The retained beliefs are those with $\prov=\mathrm{observed}$, $\vol=\mathrm{permanent}$, and $\stat=\mathrm{extant}$, filtered by the across-episode memory as described in Section~\ref{sec:type1-type2}; their $\tobs$ keeps the episode index $k-1$. Elements in the initial perceptual field are not beliefs; they become beliefs when they leave it.
+where the first term enters every element asserted by the task description as a belief with its stated location, if any, and $\mathrm{Seed}_k$ is a set of beliefs retained from the end of episode $k-1$ ($\mathrm{Seed}_1=\emptyset$). The retained beliefs are those with $\prov=\mathrm{observed}$, $\vol=\mathrm{permanent}$, and $\stat=\mathrm{extant}$, filtered by the across-episode memory as described in Section~\ref{sec:type1-type2}. Elements in the initial perceptual field are not beliefs; they become beliefs when they leave it.
 
 \paragraph{Step update.}
 At every time step the belief set is updated recursively from the previous set and the current observation,
@@ -216,12 +215,13 @@ At every time step the belief set is updated recursively from the previous set a
 \end{equation}
 by four rules, all of which read the structured observation directly and involve no LLM call:
 \begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
-\item \emph{Departure.} An element present in $\sP_{t-1}$ and absent from $\sP_t$ is written as a belief with the attributes and locator last observed, $\tobs=(k,t,i)$, $\prov=\mathrm{observed}$, $\vol$ from $S(\type)$, and $\stat=\mathrm{extant}$.
+\item \emph{Departure.} An element present in $\sP_{t-1}$ and absent from $\sP_t$ is written as a belief with the attributes and location last observed, $\tobs=(k,t,i)$, $\prov=\mathrm{observed}$, $\vol$ from $S(\type)$, and $\stat=\mathrm{extant}$.
 \item \emph{Re-observation.} An element in $\sP_t$ that has a belief refreshes that belief's $\attr$, $\loc$, and $\tobs$, and sets $\stat=\mathrm{extant}$ if it was \emph{unknown}.
 \item \emph{Absence.} A belief whose $\loc$ lies within the current sensing range and whose element does not appear in $\sP_t$ has $\stat$ set to \emph{unknown}. This is the rule that lets a plan resting on a remembered element discover that the element is gone.
 \item \emph{Coverage.} The area swept by the sensing range is accumulated into the region beliefs covering it.
 \end{enumerate}
-Updates are keyed by $(\type,\loc)$ rather than appended, so re-observing an element refreshes its belief rather than duplicating it. Because the rules are local to $\calB_{t-1}$ and $o_t$, the cost per step is independent of how long the episode has run.
+Updates are keyed by $(\type,\loc)$ rather than appended, so re-observing an element refreshes its belief rather than duplicating it. 
+
 
 \paragraph{Consolidation.}
 Three updates cannot be expressed as rules on a single observation, and are performed once per option, at its termination, by an LLM:
@@ -240,10 +240,7 @@ A read returns the remembered component of a state estimate for a given consumer
 where the context $c$ is the goal for the planner root, the option being expanded for the option generator and dynamics predictor, and the option being executed for the executor. Retrieval ranks beliefs by relevance to $c$ and discounts them by staleness, the elapsed time since $\tobs$ relative to $\vol$, with \emph{permanent} beliefs undiscounted. In small memories $\Read$ returns all beliefs with $\stat=\mathrm{extant}$; as $\calB_t$ grows, a fixed budget of beliefs is admitted per read, ranked by an LLM-scored or embedding-based relevance to $c$. The store itself is never placed in a prompt; only the read view is. Because the step update runs at every time step, a read is correct at any $t$, not only at option boundaries; this is what the executor's code attempts and the in-option termination predicate of Section~\ref{sec:type1-plan} rely on.
 
 \paragraph{End of episode.}
-At episode termination, the beliefs eligible for seeding (observed, permanent, extant) are retained and all others are discarded. The terminal belief set is also retained as an evaluation artifact: comparing it against the true state yields recall at delay as defined in Section~\ref{sec:tasks}.
-
-\paragraph{Two rates.}
-The same division recurs in the across-episode memory of Section~\ref{sec:type2}, which likewise performs cheap deterministic writes at its fast rate (every option termination) and LLM consolidation at its slow rate (every episode boundary). In both memories the fast rate keeps the store correct and the slow rate keeps it abstract and bounded.
+At episode termination, the beliefs eligible for seeding (observed, permanent, extant) are retained and all others are discarded. 
 
 \subsection{Planning and execution on the state estimate}
 \label{sec:type1-plan}
@@ -265,7 +262,7 @@ Edges are created by proposing $k$ candidate options at a leaf and repairing tho
 \omega^{(j)}\sim\llm{feas}(\cdot\mid\tau_{i-1},\tilde\omega^{(j)}).
 \label{eq:generator}
 \end{equation}
-The feasibility module judges an option that refers to a remembered element as feasible only if the node's belief component contains a belief for it with $\stat=\mathrm{extant}$ and a locator; a belief with $\prov=\mathrm{imagined}$ or a heavily discounted $\tobs$ is reported to the module as such, and options resting on it are repaired into options that first verify the element.
+The feasibility module judges an option that refers to a remembered element as feasible only if the node's belief component contains a belief for it with $\stat=\mathrm{extant}$ and a location; a belief with $\prov=\mathrm{imagined}$ or a heavily discounted $\tobs$ is reported to the module as such, and options resting on it are repaired into options that first verify the element.
 
 \paragraph{Dynamics predictor.}
 The child state is predicted as a full record,
@@ -281,7 +278,7 @@ A termination predictor $\mathrm{done}\sim\llm{term}(\cdot\mid\shat)$ marks term
 \hat r(\tau,\omega)=\textstyle\sum_{q\in\calQ}c_q\,r_q(\tau,\omega),\qquad r_q\sim\llm{reward}(\cdot\mid\tau,\omega,q).
 \label{eq:reward}
 \end{equation}
-Besides feasibility, goal relevance, and coherence, $\calQ$ contains questions that credit an option for resolving uncertainty relevant to the goal (converting a belief with $\stat=\mathrm{unknown}$ into one with $\stat=\mathrm{extant}$ and a locator) and debit an option that relies on an imagined belief.
+Besides feasibility, goal relevance, and coherence, $\calQ$ contains questions that credit an option for resolving uncertainty relevant to the goal (converting a belief with $\stat=\mathrm{unknown}$ into one with $\stat=\mathrm{extant}$ and a location) and debit an option that relies on an imagined belief.
 
 \paragraph{Search.}
 Each iteration selects a path from the root by the upper confidence bound rule, expands the leaf by (\ref{eq:generator})--(\ref{eq:dyn}), evaluates it by an option-driven rollout of length at most $d$ that greedily follows $\hat r$, and backpropagates the discounted return into the $Q$-values of the visited node-option pairs. After $\mathit{iter}$ iterations the recommended sequence is read off by greedily following the maximal $Q$-value from the root. For each option in the sequence, the predicted end state, feasibility verdict, and reward of its tree node are recorded as $\mathrm{pred}_i$ for the option's trace.
@@ -343,7 +340,7 @@ Type 1 memory remembers the world. The memory developed in this section (\emph{T
 \begin{figure}[t]
 \centering
 \input{figs/fig_signature}
-\caption{Signatures. (a) The signature of a state with respect to a canonical option is a projection onto the option's relevance set followed by a value abstraction; the great majority of the state is discarded, and quantities, tiers, and locators are replaced by the equivalence classes that matter for this option. (b) Because the projection is small and the abstraction coarse, many distinct states map to one key, and their experiences may be aggregated whenever the signature is sufficient in the sense of (\ref{eq:sufficient}). (c) When it is not, the omission shows up as outcome variance at a single key that co-varies with a feature outside the relevance set; consolidation adds that feature and splits the key.}
+\caption{Signatures. (a) The signature of a state with respect to a canonical option is a projection onto the option's relevance set followed by a value abstraction; the great majority of the state is discarded, and quantities, tiers, and locations are replaced by the equivalence classes that matter for this option. (b) Because the projection is small and the abstraction coarse, many distinct states map to one key, and their experiences may be aggregated whenever the signature is sufficient in the sense of (\ref{eq:sufficient}). (c) When it is not, the omission shows up as outcome variance at a single key that co-varies with a feature outside the relevance set; consolidation adds that feature and splits the key.}
 \label{fig:signature}
 \end{figure}
 
@@ -356,8 +353,8 @@ Options are natural-language strings, and semantically equivalent strings must m
 \paragraph{Relevance set and value abstraction.}
 Each canonical option carries a \emph{schema} $(\Rel(\bar\omega),\alpha_{\bar\omega})$ consisting of
 \begin{itemize}[leftmargin=1.5em,itemsep=1pt]
-\item a \emph{relevance set} $\Rel(\bar\omega)=\Rel_{\mathrm{pre}}(\bar\omega)\cup\Rel_{\mathrm{eff}}(\bar\omega)\subseteq\calF$, where $\Rel_{\mathrm{pre}}$ contains the features that condition whether the option can be executed (required possessions, required tool tier, the status and locator of the element it refers to) and $\Rel_{\mathrm{eff}}$ the features that modulate its effect (the quantity available at the element, the agent's carrying capacity); and
-\item a \emph{value abstraction} $\alpha_{\bar\omega}$ that maps the raw value of each feature in $\Rel(\bar\omega)$ to an equivalence class: quantities to threshold buckets relative to the option's requirement, tool-like attributes to tiers, locators to $\{\mathrm{known},\mathrm{unknown}\}$, belief status to $\{\mathrm{extant},\mathrm{consumed},\mathrm{unknown}\}$.
+\item a \emph{relevance set} $\Rel(\bar\omega)=\Rel_{\mathrm{pre}}(\bar\omega)\cup\Rel_{\mathrm{eff}}(\bar\omega)\subseteq\calF$, where $\Rel_{\mathrm{pre}}$ contains the features that condition whether the option can be executed (required possessions, required tool tier, the status and location of the element it refers to) and $\Rel_{\mathrm{eff}}$ the features that modulate its effect (the quantity available at the element, the agent's carrying capacity); and
+\item a \emph{value abstraction} $\alpha_{\bar\omega}$ that maps the raw value of each feature in $\Rel(\bar\omega)$ to an equivalence class: quantities to threshold buckets relative to the option's requirement, tool-like attributes to tiers, locations to $\{\mathrm{known},\mathrm{unknown}\}$, belief status to $\{\mathrm{extant},\mathrm{consumed},\mathrm{unknown}\}$.
 \end{itemize}
 The schema is produced once, when the canonical option is first encountered, by a prompting module $\llm{schema}(\cdot\mid\bar\omega,\calF)$, and cached; it is never re-derived at write or read time, which guarantees that the same option yields the same key structure throughout the episode sequence. It is revised only by the refinement step below, between episodes.
 
