@@ -18,10 +18,10 @@
 
 % ================= middle row =================
 \node[core] (env)  at (0,0)    {Environment\\instance $\calE$};
-\node[core] (plan) at (4.2,0)  {Planner\\[-2pt]{\footnotesize MCTS over options}\\[-3pt]{\tiny $\llm{propose},\llm{feas},\llm{dyn},$}\\[-3pt]{\tiny $\llm{term},\llm{reward}$}};
+\node[core] (plan) at (4.2,0)  {Planner\\[-2pt]{\footnotesize MCTS over options}\\[-3pt]{\tiny $\llm{propose},\llm{dyn},$}\\[-3pt]{\tiny $\llm{term},\llm{reward}$}};
 \node[core] (exec) at (11.0,0) {Executor\\[-2pt]{\footnotesize call-and-return}\\[-3pt]{\tiny $\llm{code},\ \llm{\beta}$}\\[-3pt]{\tiny\phantom{x}}};
 \node[box, fill=white, draw=black!70, font=\footnotesize, minimum width=23mm] (mon) at (7.8,1.85)
-  {Monitor\\[-2pt]{\tiny $\shat_i$ vs.\ $\shat_{t_i}$ on $\Rel(\omega_{i+1:n})$}};
+  {Monitor\\[-2pt]{\tiny $\shat_i$ vs.\ $\shat_{t_i}$ on $F_{i+1:n}$}};
 
 % ================= top band: Type 1 =================
 \node[sub1] (bel) at (4.2,4.4) {beliefs $\calB_t$\\[-2pt]{\tiny $(\attr,\loc,\tobs,$}\\[-3pt]{\tiny $\prov,\vol,\stat)$}};
@@ -32,9 +32,9 @@
 \node[NavyBlue!85!black, font=\footnotesize\bfseries, anchor=west] at ([yshift=3.2mm]band1.north west)
   {Type 1: state memory\ \ {\normalfont\footnotesize (the world; lifetime: one episode)}};
 
-% option trace, outside both memories
+% per-option record, outside both memories
 \node[box, fill=black!4, draw=black!60, font=\footnotesize, minimum width=25mm] (trc) at (11.9,4.4)
-  {option trace $\Trace_i$\\[-2pt]{\tiny $\mathrm{pred}_i$, attempts,}\\[-3pt]{\tiny $\shat_{t_{i-1}},\shat_{t_i}$, outcome}};
+  {per-option record\\[-2pt]{\tiny $\mathrm{pred}_i$, attempts,}\\[-3pt]{\tiny $\shat_{t_{i-1}},\shat_{t_i}$, outcome}};
 
 % ================= bottom band: Type 2 =================
 \node[sub2] (xp)   at (4.2,-4.0)  {experiences $\{x\}$\\[-2pt]{\tiny $(\kappa,\hat\Delta,\Delta,\mathrm{outcome},\pi^\ast,\dots)$}};
@@ -64,7 +64,7 @@
 \draw[r1] (8.1,3.88) -- (8.1,1.15) -- (10.4,1.15) -- (10.4,0.78);
 \node[lbl, above] at (9.1,1.18) {$\shat_t$, locations};
 
-% ================= planner -> executor; trace -> monitor -> planner =================
+% ================= planner -> executor; record -> monitor -> planner =================
 \draw[flow] (plan) -- (exec);
 \node[lbl, above] at (7.6,0.06) {plan $(\omega_1,\dots,\omega_n)$};
 
@@ -88,7 +88,7 @@
 \draw[w1] ([yshift=-3mm]band1.west) -- (-2.4,4.1) -- (-2.4,-4.0) -- (band2.west);
 \node[tlab, rotate=90] at (-2.6,0.4) {belief invalidations};
 \draw[w2] (13.15,4.4) -- (13.55,4.4) -- (13.55,-4.0) -- (band2.east);
-\node[tlab, rotate=90] at (13.75,0.4) {closed trace $\to$ experience $x$};
+\node[tlab, rotate=90] at (13.75,0.4) {option record $\to$ experience $x$};
 \draw[w2] (12.35,-4.0) -- (12.35,-4.0);
 \draw[w2] (13.55,-1.2) -- (13.55,-1.2);
 \end{tikzpicture}

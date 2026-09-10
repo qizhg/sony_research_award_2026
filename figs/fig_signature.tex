@@ -19,7 +19,7 @@
   \textcolor{black!45}{percept.entities.cow: yes}\\
   {\color{NavyBlue!85!black}belief.iron.status: extant}\\
   {\color{NavyBlue!85!black}belief.iron.loc: $(46,4)$}\\
-  {\color{ForestGreen!85!black}belief.iron.attr.qty: 5}\\
+  {\color{NavyBlue!85!black}belief.iron.attr.qty: 5}\\
   \textcolor{black!45}{belief.lava.loc: $(48,12)$}\\
   \textcolor{black!45}{\dots\ (hundreds more)}};
 
@@ -30,7 +30,7 @@
   {\color{NavyBlue!85!black}tool.pickaxe: stone}\\
   {\color{NavyBlue!85!black}iron.status: extant}\\
   {\color{NavyBlue!85!black}iron.loc: $(46,4)$}\\
-  {\color{ForestGreen!85!black}iron.attr.qty: 5}};
+  {\color{NavyBlue!85!black}iron.attr.qty: 5}};
 
 \draw[ar] (7.55,3.0) -- node[tlab, above]{abstract} node[tlab, below]{$\alpha_{\bar\omega}$} (8.95,3.0);
 
@@ -39,11 +39,11 @@
   {\color{NavyBlue!85!black}tool: $\ge$ stone}\\
   {\color{NavyBlue!85!black}iron: extant}\\
   {\color{NavyBlue!85!black}iron.loc: known}\\
-  {\color{ForestGreen!85!black}iron.qty: $\ge$ required}};
+  {\color{NavyBlue!85!black}iron.qty: $\ge$ required}};
 
 \node[tlab, anchor=north west, align=left] at (11.9,3.9)
- {{\color{NavyBlue!85!black}$\Rel_{\mathrm{pre}}$: can it be executed}\\[2pt]
-  {\color{ForestGreen!85!black}$\Rel_{\mathrm{eff}}$: what it yields}\\[2pt]
+ {{\color{NavyBlue!85!black}coloured: in $\Rel(\bar\omega)$;}\\[2pt]
+  {\color{NavyBlue!85!black}kept, then abstracted}\\[2pt]
   \textcolor{black!45}{grey: not in $\Rel(\bar\omega)$;}\\
   \textcolor{black!45}{discarded by the projection}};
 
@@ -64,5 +64,5 @@
 \node[key, anchor=north west] at (11.35,1.0) {$\kappa'$ (torch: yes)\ \ \textcolor{ForestGreen!85!black}{\checkmark\checkmark\checkmark}};
 \node[key, anchor=north west] at (11.35,0.32) {$\kappa''$ (torch: no)\ \ \textcolor{Red!70!black}{\ding{55}\ding{55}\ding{55}}};
 \node[tlab, anchor=north west, align=left, text width=6.9cm] at (7.6,-0.85)
- {outcome variance that co-varies with a feature outside $\Rel(\bar\omega)$ reveals an omitted precondition; the key is split between episodes};
+ {outcome variance that co-varies with a feature outside $\Rel(\bar\omega)$ reveals a feature the relevance set omitted; the key is split between episodes};
 \end{tikzpicture}
