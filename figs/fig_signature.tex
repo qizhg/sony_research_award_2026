@@ -1,0 +1,68 @@
+% Signatures: projection + abstraction, many-to-one keys, and schema refinement.
+\begin{tikzpicture}[
+  font=\small,
+  rec/.style={draw=black!55, fill=white, rounded corners=1.5pt, inner sep=3pt, font=\tiny, align=left},
+  key/.style={draw=BurntOrange!90!black, fill=BurntOrange!10, rounded corners=1.5pt, inner sep=3pt, font=\tiny, align=left},
+  ar/.style={-{Latex[length=1.5mm]}, black!70, thin},
+  pcap/.style={font=\scriptsize\itshape, inner sep=1pt},
+  tlab/.style={font=\tiny, inner sep=1pt, align=center},
+]
+
+% ================= (a) construction =================
+\node[pcap, anchor=west] at (0,4.75) {(a) $\bar\omega =$ ``mine $\ge 3$ iron''};
+
+\node[rec, anchor=north west] at (0,4.4)
+ {state estimate $\shat$\\[2pt]
+  \textcolor{black!45}{agent.possessions.wood: 7}\\
+  {\color{NavyBlue!85!black}agent.tool.pickaxe: stone}\\
+  \textcolor{black!45}{agent.health: 18}\\
+  \textcolor{black!45}{percept.entities.cow: yes}\\
+  {\color{NavyBlue!85!black}belief.iron.status: extant}\\
+  {\color{NavyBlue!85!black}belief.iron.loc: $(46,4)$}\\
+  {\color{ForestGreen!85!black}belief.iron.attr.qty: 5}\\
+  \textcolor{black!45}{belief.lava.loc: $(48,12)$}\\
+  \textcolor{black!45}{\dots\ (hundreds more)}};
+
+\draw[ar] (3.45,3.0) -- node[tlab, above]{project} node[tlab, below]{$\Rel(\bar\omega)$} (4.85,3.0);
+
+\node[rec, anchor=north west] at (4.85,3.9)
+ {$\shat|_{\Rel(\bar\omega)}$\\[2pt]
+  {\color{NavyBlue!85!black}tool.pickaxe: stone}\\
+  {\color{NavyBlue!85!black}iron.status: extant}\\
+  {\color{NavyBlue!85!black}iron.loc: $(46,4)$}\\
+  {\color{ForestGreen!85!black}iron.attr.qty: 5}};
+
+\draw[ar] (7.55,3.0) -- node[tlab, above]{abstract} node[tlab, below]{$\alpha_{\bar\omega}$} (8.95,3.0);
+
+\node[key, anchor=north west] at (8.95,3.9)
+ {$\kappa=(\bar\omega,\ \sigma_{\bar\omega}(\shat))$\\[2pt]
+  {\color{NavyBlue!85!black}tool: $\ge$ stone}\\
+  {\color{NavyBlue!85!black}iron: extant}\\
+  {\color{NavyBlue!85!black}iron.loc: known}\\
+  {\color{ForestGreen!85!black}iron.qty: $\ge$ required}};
+
+\node[tlab, anchor=north west, align=left] at (11.9,3.9)
+ {{\color{NavyBlue!85!black}$\Rel_{\mathrm{pre}}$: can it be executed}\\[2pt]
+  {\color{ForestGreen!85!black}$\Rel_{\mathrm{eff}}$: what it yields}\\[2pt]
+  \textcolor{black!45}{grey: not in $\Rel(\bar\omega)$;}\\
+  \textcolor{black!45}{discarded by the projection}};
+
+% ================= (b) many-to-one =================
+\node[pcap, anchor=west] at (0,1.35) {(b) generalization};
+\node[rec, anchor=north west, font=\tiny] at (0,1.0) {$\shat^{(1)}$: wood 7, health 18, qty 5};
+\node[rec, anchor=north west, font=\tiny] at (0,0.42) {$\shat^{(2)}$: wood 2, health 9,\phantom{0} qty 8};
+\node[rec, anchor=north west, font=\tiny] at (0,-0.16) {$\shat^{(3)}$: wood 7, health 20, qty 4};
+\node[key, anchor=west] at (4.6,0.42) {one key $\kappa$};
+\foreach \y in {0.84,0.26,-0.32}{ \draw[ar] (3.5,\y) -- (4.55,0.42); }
+\node[tlab, anchor=north west, align=left, text width=5.6cm] at (0,-0.85)
+ {experiences from all three are exchangeable samples of $p(\Delta\mid\kappa)$ when $\sigma_{\bar\omega}$ is \emph{sufficient}};
+
+% ================= (c) refinement =================
+\node[pcap, anchor=west] at (7.6,1.35) {(c) collision and refinement};
+\node[key, anchor=north west] at (7.6,1.0) {$\kappa$\ \ outcomes: \textcolor{ForestGreen!85!black}{\checkmark\checkmark}\,\textcolor{Red!70!black}{\ding{55}\ding{55}}\\[1pt] high variance};
+\draw[ar] (10.05,0.6) -- node[tlab, above]{add $f\notin\Rel$}node[tlab, below]{split} (11.35,0.6);
+\node[key, anchor=north west] at (11.35,1.0) {$\kappa'$ (torch: yes)\ \ \textcolor{ForestGreen!85!black}{\checkmark\checkmark\checkmark}};
+\node[key, anchor=north west] at (11.35,0.32) {$\kappa''$ (torch: no)\ \ \textcolor{Red!70!black}{\ding{55}\ding{55}\ding{55}}};
+\node[tlab, anchor=north west, align=left, text width=6.9cm] at (7.6,-0.85)
+ {outcome variance that co-varies with a feature outside $\Rel(\bar\omega)$ reveals an omitted precondition; the key is split between episodes};
+\end{tikzpicture}

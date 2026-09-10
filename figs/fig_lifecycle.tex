@@ -1,0 +1,72 @@
+% Experience memory over the episode sequence: write cadences and what crosses the boundary.
+\begin{tikzpicture}[
+  font=\small,
+  zone/.style={rounded corners=3pt, draw=black!35},
+  zlab/.style={font=\scriptsize\bfseries, anchor=north west, inner sep=2pt},
+  wbox/.style={draw=BurntOrange!90!black, fill=BurntOrange!10, rounded corners=2pt, inner sep=3pt, font=\tiny, align=center},
+  cbox/.style={draw=BurntOrange!90!black, fill=white, rounded corners=2pt, inner sep=3pt, font=\tiny, align=left},
+  t1box/.style={draw=NavyBlue!70, fill=NavyBlue!8, rounded corners=2pt, inner sep=3pt, font=\tiny, align=left},
+  tick/.style={circle, fill=black!70, inner sep=0pt, minimum size=1.5mm},
+  ar/.style={-{Latex[length=1.4mm]}, BurntOrange!90!black, thin},
+  arb/.style={-{Latex[length=1.4mm]}, black!60, thin},
+  arr/.style={-{Latex[length=1.4mm]}, BurntOrange!90!black, thin, dashed},
+  ar1/.style={-{Latex[length=1.4mm]}, NavyBlue!85!black, thin},
+  tlab/.style={font=\tiny, inner sep=1pt, align=center},
+]
+
+% ================= zones =================
+\fill[black!3, rounded corners=3pt] (0,0.2) rectangle (6.1,5.2);
+\draw[zone] (0,0.2) rectangle (6.1,5.2);
+\node[zlab] at (0.06,5.18) {Episode $k$};
+
+\fill[BurntOrange!6, rounded corners=3pt] (6.45,0.2) rectangle (9.95,5.2);
+\draw[zone, draw=BurntOrange!60] (6.45,0.2) rectangle (9.95,5.2);
+\node[zlab, BurntOrange!90!black] at (6.51,5.18) {Between episodes};
+
+\fill[black!3, rounded corners=3pt] (10.3,0.2) rectangle (15.4,5.2);
+\draw[zone] (10.3,0.2) rectangle (15.4,5.2);
+\node[zlab] at (10.36,5.18) {Episode $k+1$};
+
+% ================= option terminations =================
+\foreach \x/\i in {1.1/1, 2.4/2, 3.7/3, 5.0/4}{
+  \node[tick] at (\x,4.55) {}; \node[font=\tiny, above, inner sep=1pt] at (\x,4.62) {$\omega_{\i}$};
+  \draw[ar] (\x,4.45) -- (\x,4.05);
+}
+\foreach \x/\i in {11.4/1, 12.7/2, 14.0/3}{
+  \node[tick] at (\x,4.55) {}; \node[font=\tiny, above, inner sep=1pt] at (\x,4.62) {$\omega_{\i}$};
+  \draw[ar] (\x,4.45) -- (\x,4.05);
+}
+\draw[black!45] (0.5,4.55) -- (5.6,4.55);
+\draw[black!45] (10.8,4.55) -- (14.9,4.55);
+
+% ================= write at option termination =================
+\node[wbox, text width=4.9cm, anchor=north] at (3.05,4.05)
+  {\textbf{at each option termination}\\[1pt] experience $x$\ \ $\cdot$\ \ summaries $S(\kappa)$, $S(\mathrm{type})$};
+\node[wbox, text width=4.1cm, anchor=north] at (12.85,4.05)
+  {\textbf{at each option termination}\\[1pt] $x$\ \ $\cdot$\ \ $S(\kappa)$\ \ $\cdot$\ \ $S(\mathrm{type})$};
+
+% read-back arrow inside the episode
+\draw[arr] (0.45,3.15) -- (0.45,4.55) -- (0.95,4.55);
+\node[tlab, anchor=north, BurntOrange!90!black, text width=5.4cm] at (3.05,3.0)
+  {\textbf{current within the episode}: read at the next option and at every replanning call};
+
+% ================= episode end =================
+\node[wbox, text width=4.9cm, anchor=north] at (3.05,2.2)
+  {\textbf{at episode end}\ \ set flag on the episode's experiences};
+
+% ================= consolidation =================
+\node[cbox, text width=2.85cm, anchor=north] at (8.2,4.05)
+  {refine / merge schemas\\[1pt] re-key experiences\\[1pt] distill rules $\calK$\\[1pt] revise $S(\mathrm{type})$\\[1pt] select $\mathrm{Seed}_{k+1}$\\[1pt] prune the reservoir};
+\draw[ar] (6.15,3.3) -- (6.55,3.3);
+\draw[ar] (9.85,3.3) -- (10.4,3.3);
+\node[tlab, anchor=north, BurntOrange!90!black, text width=3.0cm] at (8.2,1.95)
+  {\textbf{one episode late}:\\ schemas, $\calK$, $S(\mathrm{type})$, $\mathrm{Seed}$};
+
+% ================= into Type 1 of the next episode =================
+\node[t1box, text width=4.1cm, anchor=north] (t1r) at (12.85,2.2)
+  {read by Type 1 in episode $k+1$:\\[1pt]
+   $\mathrm{Seed}_{k+1}\to\calB_0$ at initialization\\[1pt]
+   persistence $\to\vol$ at belief creation\\[1pt]
+   relevance $\to$ pruning};
+\draw[ar1] (8.2,1.35) -- (8.2,0.7) -- (12.85,0.7) -- (t1r.south);
+\end{tikzpicture}

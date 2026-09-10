@@ -1,0 +1,76 @@
+% Two-rate belief filter: per-step rule updates and per-option LLM consolidation.
+\begin{tikzpicture}[
+  font=\small,
+  lab/.style={font=\scriptsize, inner sep=1.5pt},
+  tlab/.style={font=\tiny, inner sep=1pt, align=center},
+  lane/.style={font=\scriptsize, anchor=east},
+  opt/.style={draw=black!70, fill=white, rounded corners=1.5pt, minimum height=8mm, font=\tiny, inner sep=2pt, align=center, text width=1.85cm},
+  ext/.style={NavyBlue!85!black, line width=1.1pt},
+  unk/.style={NavyBlue!85!black, line width=1.1pt, dash pattern=on 1.2pt off 1.4pt},
+  con/.style={black!35, line width=1.1pt},
+  stp/.style={-{Latex[length=1.2mm]}, NavyBlue!60, very thin},
+  cns/.style={-{Latex[length=1.6mm]}, BurntOrange!90!black, thin},
+  ev/.style={circle, fill=NavyBlue!85!black, inner sep=0pt, minimum size=1.6mm},
+  evo/.style={circle, draw=NavyBlue!85!black, fill=white, inner sep=0pt, minimum size=1.6mm, line width=0.7pt},
+  evc/.style={diamond, fill=BurntOrange!90!black, inner sep=0pt, minimum size=1.9mm},
+]
+\def\xa{2.0}\def\xb{4.3}\def\xc{6.6}\def\xd{8.9}\def\xe{11.2}\def\xf{13.5}
+
+% ---------- option lane ----------
+\node[lane] at (\xa-0.15,5.5) {options};
+\node[opt] at ({(\xa+\xb)/2},5.5) {$\omega_1$:\\gather wood};
+\node[opt] at ({(\xb+\xc)/2},5.5) {$\omega_2$:\\explore north};
+\node[opt] at ({(\xc+\xd)/2},5.5) {$\omega_3$:\\craft pickaxe};
+\node[opt] at ({(\xd+\xe)/2},5.5) {$\omega_4$:\\mine iron};
+\node[opt] at ({(\xe+\xf)/2},5.5) {$\omega_5$:\\fill bucket at lava};
+
+\foreach \x/\n in {\xa/0,\xb/1,\xc/2,\xd/3,\xe/4,\xf/5}{
+  \draw[black!25, dashed] (\x,0.85) -- (\x,5.95);
+  \node[font=\tiny, black!55, anchor=south] at (\x,6.0) {$t_{\n}$};
+}
+
+% ---------- rate lanes ----------
+\node[lane, NavyBlue!85!black] at (\xa-0.15,4.5) {step update};
+\foreach \x in {2.25,2.5,...,13.35}{ \draw[stp] (\x,4.72) -- (\x,4.3); }
+\node[tlab, NavyBlue!85!black, anchor=west] at (\xf+0.12,4.5) {every $t$;\\rules only};
+
+\node[lane, BurntOrange!90!black] at (\xa-0.15,3.85) {consolidation};
+\foreach \x in {\xb,\xc,\xd,\xe,\xf}{ \node[evc] at (\x,3.85) {}; \draw[cns] (\x,4.07) -- (\x,3.65); }
+\node[tlab, BurntOrange!90!black, anchor=west] at (\xf+0.12,3.85) {every $t_i$;\\LLM};
+
+% ---------- belief lanes ----------
+\node[font=\scriptsize, anchor=east, NavyBlue!85!black] at (\xa-0.15,3.25) {beliefs $\calB_t$};
+\node[lane] at (\xa-0.15,2.75) {lava};
+\node[lane] at (\xa-0.15,2.15) {iron};
+\node[lane] at (\xa-0.15,1.55) {cow};
+\node[lane] at (\xa-0.15,0.95) {region N};
+
+% lava: created mid-omega2 by the departure rule
+\draw[ext] (5.45,2.75) -- (\xf,2.75);
+\node[ev] at (5.45,2.75) {};
+\node[tlab, anchor=south west, NavyBlue!85!black] at (5.5,2.82) {departure rule: left $\FP$ mid-option};
+
+% iron: created at t2 by departure, consumed by consolidation at t4
+\draw[ext] (\xc-0.55,2.15) -- (\xe,2.15);
+\draw[con] (\xe,2.15) -- (\xf,2.15);
+\node[ev] at (\xc-0.55,2.15) {};
+\node[evc] at (\xe,2.15) {};
+\node[tlab, anchor=south west, black!55] at (\xe+0.08,2.22) {\emph{consumed}: attribution};
+
+% cow: created in omega1, unknown mid-omega4 by absence rule
+\draw[ext] (3.7,1.55) -- (9.8,1.55);
+\draw[unk] (9.8,1.55) -- (\xf,1.55);
+\node[ev] at (3.7,1.55) {};
+\node[evo] at (9.8,1.55) {};
+\node[tlab, anchor=south west, black!55] at (9.85,1.62) {absence rule: $\loc$ in range, element gone};
+
+% region N: abstracted by consolidation at t2
+\draw[ext] (\xc,0.95) -- (\xf,0.95);
+\node[evc] at (\xc,0.95) {};
+\node[tlab, anchor=south west, black!55] at (\xc+0.1,1.02) {abstraction: coverage $\to$ ``traversed, no ore''};
+
+% ---------- legend / recall ----------
+\draw[{Latex[length=1.4mm]}-{Latex[length=1.4mm]}, black!70] (5.45,0.45) -- (12.35,0.45);
+\node[lab, anchor=south, black!70, fill=white, inner sep=1.5pt] at ({(5.45+12.35)/2},0.46)
+  {\emph{recall at delay} $\delta=3$ options};
+\end{tikzpicture}

@@ -1,0 +1,434 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{fontenc}
+\usepackage{inputenc}
+\usepackage[pdftex,colorlinks,linkcolor=blue,citecolor=OliveGreen,urlcolor=blue,filecolor=blue]{hyperref}
+\usepackage{enumitem}
+\usepackage{titlesec}
+\usepackage{parskip}
+\usepackage[dvipsnames]{xcolor}
+\usepackage{booktabs}
+\usepackage[numbers]{natbib}
+
+\usepackage{amsmath,amsthm,amssymb}
+\usepackage{graphicx}
+
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection}{1em}{}
+\titlespacing{\section}{0pt}{8pt}{4pt}
+\titlespacing{\subsection}{0pt}{5pt}{1pt}
+\titlespacing{\subsubsection}{0pt}{3pt}{0pt}
+
+% ---- notation ----
+\newcommand{\llm}[1]{\mathrm{LLM}_{\mathrm{#1}}}
+\newcommand{\calS}{\mathcal{S}}
+\newcommand{\calA}{\mathcal{A}}
+\newcommand{\calO}{\mathcal{O}}
+\newcommand{\calF}{\mathcal{F}}
+\newcommand{\calV}{\mathcal{V}}
+\newcommand{\calM}{\mathcal{M}}
+\newcommand{\calE}{\mathcal{E}}
+\newcommand{\calB}{\mathcal{B}}
+\newcommand{\calR}{\mathcal{R}}
+\newcommand{\calQ}{\mathcal{Q}}
+\newcommand{\Rel}{R}
+\newcommand{\shat}{\hat{s}}
+\newcommand{\sA}{s^{\mathrm{A}}}
+\newcommand{\sP}{s^{\mathrm{P}}}
+\newcommand{\sM}{s^{\mathrm{M}}}
+\newcommand{\FA}{\calF^{\mathrm{A}}}
+\newcommand{\FP}{\calF^{\mathrm{P}}}
+\newcommand{\FM}{\calF^{\mathrm{M}}}
+\newcommand{\Read}{\mathrm{Read}}
+\newcommand{\Write}{\mathrm{Write}}
+\newcommand{\Trace}{\mathrm{Trace}}
+\newcommand{\loc}{\mathrm{loc}}
+\newcommand{\prov}{\mathrm{prov}}
+\newcommand{\vol}{\mathrm{vol}}
+\newcommand{\stat}{\mathrm{status}}
+\newcommand{\attr}{\mathrm{attr}}
+\newcommand{\id}{\mathrm{id}}
+\newcommand{\dist}{\mathrm{dist}}
+
+\begin{document}
+
+\section{Problem Setup}
+\label{sec:setup}
+
+This section formalizes the decision-making problem, fixes the representation of states and observations for the video-game setting, and defines the task structure under which memory is to be evaluated.
+
+\subsection{Decision making under partial observability}
+\label{sec:pomdp}
+
+\paragraph{POMDPs.}
+The task faced by the agent is a partially observable Markov decision process (POMDP) $(\calS, \calA, \calO, p, Z, r)$, where $\calS$ is the set of world states, $\calA$ the set of primitive actions, $\calO$ the set of observations, $p:\calS\times\calA\to\Delta(\calS)$ the transition function, $Z:\calS\to\Delta(\calO)$ the observation function, and $r:\calS\times\calA\to\mathbb{R}$ the reward function. At each discrete time step $t=0,1,\dots$, the environment is in state $s_t\in\calS$, the agent receives an observation $o_t\sim Z(\cdot\mid s_t)$, and chooses an action $a_t\in\calA$; the next state is sampled as $s_{t+1}\sim p(\cdot\mid s_t,a_t)$. The agent does not observe $s_t$. Its information at time $t$ is the history $h_t := (o_0,a_0,o_1,\dots,a_{t-1},o_t)$, and a policy is a mapping $\pi: h_t\mapsto \Delta(\calA)$. The agent aims to maximize the expected cumulative discounted reward $\mathbb{E}_\pi[\sum_{t\ge 0}\gamma^t r(s_t,a_t)]$ with discount $\gamma\in[0,1)$. In the tasks considered here, $r$ is sparse: it is the indicator of a task-specific success predicate, defined in Section~\ref{sec:tasks}.
+
+Because the policy must condition on $h_t$ rather than $s_t$, and $h_t$ grows without bound, the agent maintains a finite \emph{state estimate} $\shat_t$ that summarizes $h_t$ for the purpose of decision making. The construction and maintenance of $\shat_t$ is the role of the within-task memory developed in Section~\ref{sec:type1}.
+
+\paragraph{Temporal abstraction.}
+An option $\omega\in\Omega$ is a pair $(\pi_\omega,\beta_\omega)$ of an in-option policy $\pi_\omega:h_t\mapsto\Delta(\calA)$ and a termination function $\beta_\omega:h_t\mapsto\{0,1\}$. Options are executed in the call-and-return manner: the agent follows $\pi_\omega$ until $\beta_\omega=1$, then selects the next option. An episode therefore decomposes into a sequence of option segments delimited by boundary times $0=t_0<t_1<\dots$, where option $\omega_i$ executes over steps $[t_{i-1},t_i)$ and terminates at $t_i$. We index quantities by \emph{option index} $i$ when they are defined at option boundaries, and by \emph{time step} $t$ when they are defined at every step.
+
+Options are represented as natural-language strings rather than abstract symbols. Consequently, $\pi_\omega$ and $\beta_\omega$ are not given a priori; they are realized on the fly by prompting a large language model (LLM) to synthesize executable code and termination predicates from the string $\omega$ and the current state estimate (Section~\ref{sec:base}).
+
+\paragraph{LLM prompting.}
+Let $\mathrm{LLM}(y\mid x)$ denote the probability that an LLM outputs token sequence $y$ given input $x$. We write $\llm{name}(y\mid x)=\mathrm{LLM}(y\mid \mathrm{prompt}_{\mathrm{name}}(x))$ for the practice of wrapping the input with a fixed prompt template specific to the module $\mathrm{name}$. All modules in this proposal are of this form; no model parameters are updated.
+
+\subsection{States, observations, and terminology for the video-game setting}
+\label{sec:states}
+
+\paragraph{Structured states.}
+We represent states and state estimates as structured key-value records. Let $\calF$ be a universe of typed \emph{feature paths} (e.g., \texttt{agent.possessions.wood}, \texttt{percept.entities.cow}) with value domains $\calV$. A (partial) state record is a partial assignment $\shat:\calF\rightharpoonup\calV$, and $\shat|_{F}$ denotes its restriction to $F\subseteq\calF$. The universe is partitioned into three components:
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item $\FA$, the \emph{agent state}: what the agent possesses and its own condition (possessions, held tools, health, pose). These features are exposed in every observation.
+\item $\FP$, the \emph{perceptual field}: elements of the world that are currently perceivable by the agent (entities, resources, and terrain within sensing range). These features are exposed in the observation but are transient: an element leaves $\FP$ as soon as it leaves sensing range.
+\item $\FM$, the \emph{remembered world}: elements of the world that were perceived earlier and are no longer in the perceptual field, together with elements asserted by the task description. These features are never exposed in an observation; they exist in $\shat_t$ only if maintained by memory.
+\end{itemize}
+Accordingly, an observation is a record over the first two components, $o_t:\FA\cup\FP\rightharpoonup\calV$, whereas the true state $s_t$ additionally contains all world elements outside the perceptual field. Partial observability in this setting is therefore \emph{spatial}: the world is larger than the sensing range, and elements outside it persist, change, or disappear without being observed. A state estimate is a record
+\begin{equation}
+\shat_t=(\sA_t,\sP_t,\sM_t),\qquad \sA_t=o_t|_{\FA},\quad \sP_t=o_t|_{\FP},\quad \sM_t=\Read(\calM_t,\cdot),
+\label{eq:state-estimate}
+\end{equation}
+where the first two components are copied from the current observation and the third is read from a memory store $\calM_t$ (Section~\ref{sec:type1}). When $\FM=\emptyset$, i.e., when the task never requires an element outside the perceptual field, $\shat_t$ reduces to the observation and the problem is effectively an MDP over $\FA\cup\FP$.
+
+\paragraph{Terminology.}
+We use the following terms for the video-game setting, chosen to be domain-neutral.
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item An \emph{environment instance} $\calE$ is a concrete world (in a procedurally generated game, a world seed and its generated content). Two instances of the same game may differ in the placement of every world element.
+\item An \emph{element} is any world entity the agent can refer to: an object, a resource deposit, a creature, a structure, or a spatial \emph{region}. Elements have a type, attributes, and a location.
+\item A \emph{locator} $\loc(\cdot)$ is the information an option needs to re-access an element: coordinates in a 3D world, a room in a building, a path or address in a software environment. Locators are the bridge between remembered elements and executable options.
+\item \emph{Control primitives} are the low-level API through which generated code acts on the environment (navigate to a locator, interact with an element, use a possession). $\calA$ is the set of such primitive calls.
+\end{itemize}
+In this and the following section, observations are structured records provided by the environment API. The extension to raw video observations, where $\sA_t$ and $\sP_t$ must themselves be inferred from pixels, is deferred to a later section; the state representation above is designed so that this extension changes only how $o_t$ is produced, not how it is consumed.
+
+\subsection{Task structure}
+\label{sec:tasks}
+
+\paragraph{Tasks and episodes.}
+We consider a set of $N$ tasks $\{g_n\}_{n=1}^N$, each specified by a natural-language goal and a success predicate $\mathrm{succ}_{g_n}:\calS\to\{0,1\}$ that is evaluated by the environment on the true state. For each task, the agent executes $K$ episodes in sequence; episode $(n,k)$ denotes the $k$-th episode of task $g_n$. Tasks are themselves presented in sequence, so the full protocol is an ordered list of $NK$ episodes. Each episode starts from an initial state $s_0$ drawn by the task, runs until $\mathrm{succ}_{g_n}(s_t)=1$ or until a budget is exhausted, and is scored by success, the number of option-execution attempts, wall-clock time, and LLM tokens consumed.
+
+\paragraph{Environment-instance persistence.}
+Whether memory can carry information across episodes depends on whether the episodes share an environment instance. We distinguish two regimes and treat the first as the default:
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Persistent instance}: all $K$ episodes of task $g_n$ are executed in the same instance $\calE_n$ from the same $s_0$. World elements found in episode $k$ exist at the same locators in episode $k+1$ unless consumed.
+\item \emph{Resampled instance}: each episode draws a fresh instance. Element-level knowledge does not transfer; only knowledge about element \emph{types} (where a resource type is typically found, what an option typically yields) transfers.
+\end{itemize}
+Across tasks, instances are always resampled, so cross-task transfer is restricted to type-level knowledge in both regimes.
+
+\paragraph{Axes of evaluation.}
+The task structure yields two transfer axes. The \emph{within-task} axis measures performance on episode $(n,k)$ as a function of $k$: the extent to which experience with the same goal in the same (or a similar) instance improves planning and execution. The \emph{across-task} axis measures performance on the first episode $(n,1)$ as a function of $n$: the extent to which experience with earlier goals improves a new one. Within a single episode, the quantity of interest for the state estimate is \emph{recall at delay}: the fraction of task-relevant elements observed $\delta$ options ago that are present in $\shat_t$ with a correct locator, as a function of $\delta$. This is the operational meaning of ``long-term'' for the within-task memory: information that must survive many intervening options to be useful.
+
+\section{Within-Task Memory: State Estimation over Options}
+\label{sec:type1}
+
+This section develops the memory that maintains the state estimate $\shat_t$ within an episode (\emph{Type 1 memory}), and describes how the option-level planner and executor are modified to construct, predict, and consume it. We first fix the base planner and executor, then define the memory unit, its operations over the course of an episode, its interaction with each planning and execution module, and the replanning procedure that the maintained state estimate enables.
+
+\subsection{Base option-level planning and execution}
+\label{sec:base}
+
+The base system solves a task in two phases. In the \emph{planning} phase, Monte Carlo tree search (MCTS) over options produces a sequence $(\omega_1,\omega_2,\dots)$ to execute. In the \emph{execution} phase, each option is executed in the call-and-return manner by LLM-generated code. All components are LLM prompting modules.
+
+\paragraph{Planning.}
+The search tree has nodes $\tau_i:=[\shat_i,\omega_1,\dots,\omega_i]$, each storing a predicted state $\shat_i$ reached by executing options $\omega_1,\dots,\omega_i$ from the root. The root stores the initial state estimate $\shat_0$. Edges are labeled by options and are created by an \emph{option generator} that proposes $k$ candidates and repairs those judged infeasible,
+\begin{equation}
+\tilde\omega^{(1)},\dots,\tilde\omega^{(k)}\sim \llm{propose}(\cdot\mid\tau_{i-1}),\qquad
+\omega^{(j)}\sim\llm{feas}(\cdot\mid\tau_{i-1},\tilde\omega^{(j)}),
+\label{eq:generator}
+\end{equation}
+and a \emph{dynamics predictor} that produces the child state,
+\begin{equation}
+\shat^{(j)}_i\sim\llm{dyn}(\cdot\mid\shat_{i-1},\omega^{(j)}).
+\label{eq:dyn}
+\end{equation}
+A \emph{termination predictor} $\mathrm{done}\sim\llm{term}(\cdot\mid\shat)$ marks terminal states, and a \emph{reward predictor} scalarizes a set of LLM-answered evaluation questions $\calQ$ with weights $c_q$,
+\begin{equation}
+\hat r(\tau,\omega)=\textstyle\sum_{q\in\calQ}c_q\,r_q(\tau,\omega),\qquad r_q\sim\llm{reward}(\cdot\mid\tau,\omega,q).
+\label{eq:reward}
+\end{equation}
+Each search iteration selects a path from the root by the upper confidence bound rule, expands the leaf via (\ref{eq:generator})--(\ref{eq:dyn}), evaluates it by an option-driven rollout of length at most $d$ that greedily follows $\hat r$, and backpropagates the discounted return into the $Q$-values of the visited node-option pairs. After $\mathit{iter}$ iterations, the recommended sequence is read off by greedily following the maximal $Q$-value from the root.
+
+\paragraph{Execution.}
+To execute option $\omega_i$ from state $s_{t}$, an in-option policy is synthesized as code, $\pi^{(1)}_{\omega_i}\sim\llm{code}(\cdot\mid\shat_t,\omega_i)$, and run until either the termination predicate $\beta_{\omega_i}(\shat_{t'})\sim\llm{\beta}(\cdot\mid\shat_{t'},\omega_i)$ fires or the execution raises an error, in which case the policy is refined, $\pi^{(m+1)}_{\omega_i}\sim\llm{code}(\cdot\mid\shat_{t'},\omega_i,\mathrm{feedback}^{(m)})$, from the interpreter and environment error messages. Each refinement is an \emph{attempt}; the number of attempts per option is capped.
+
+\paragraph{The fully observable special case.}
+In the base system, $\shat_0$ is set to the observed initial state and every $\shat$ consumed by execution is the current observation; that is, $\FM=\emptyset$ is assumed throughout. Under partial observability this assumption fails in three places: the root $\shat_0$ must be constructed rather than observed; the executor of an option that refers to a remembered element must be given its locator; and the dynamics predictor must model how the remembered component changes under an option. Type 1 memory addresses each.
+
+\subsection{Memory unit}
+\label{sec:type1-unit}
+
+\paragraph{Beliefs.}
+The atomic unit of Type 1 memory is a \emph{belief}: a claim about a single world element that is not currently in the perceptual field. A belief is a tuple
+\begin{equation}
+b=(\id,\attr,\loc,t_{\mathrm{obs}},\prov,\vol,\stat),
+\label{eq:belief}
+\end{equation}
+with the following fields.
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item $\id$ and $\attr$: the element's identity (type and, when available, a unique identifier) and attributes (quantity, properties).
+\item $\loc$: the element's locator, as defined in Section~\ref{sec:states}.
+\item $t_{\mathrm{obs}}$: the time of last observation, recorded both as an environment step and as an option index. The pair is needed because staleness is judged in environment time while retrieval is organized by option.
+\item $\prov$: provenance, taking values in $\{\mathrm{observed},\mathrm{given},\mathrm{imagined}\}$, together with the index of the option during which the belief was written. \emph{Observed} beliefs derive from an observation; \emph{given} beliefs derive from the task description; \emph{imagined} beliefs are produced by the dynamics predictor inside the search tree and never enter the memory store (Section~\ref{sec:type1-interaction}).
+\item $\vol$: a volatility class in $\{\mathrm{permanent},\mathrm{semi\text{-}permanent},\mathrm{volatile}\}$ expressing the expected persistence of the element (terrain; a container or structure; a mobile creature). It is assigned by an LLM from the element type and is the basis for discounting stale beliefs without domain-specific rules.
+\item $\stat$: the element's status in $\{\mathrm{extant},\mathrm{consumed},\mathrm{unknown}\}$, where \emph{consumed} records that the agent has depleted or removed the element and \emph{unknown} that a belief has been contradicted or has aged beyond its volatility class.
+\end{itemize}
+Regions are first-class elements, so beliefs also encode spatial and negative knowledge: a belief with $\id$ a region and $\attr$ recording that the region was traversed and contained no element of a given type. Such beliefs prevent the planner from proposing exploration of already-explored space.
+
+\paragraph{Option traces.}
+Below beliefs, the memory retains one \emph{option trace} per executed option,
+\begin{equation}
+\Trace_i=(\omega_i,\shat_{t_{i-1}},\shat_{t_i},\bar o_{[t_{i-1},t_i)},\mathrm{outcome}_i,\mathrm{cost}_i),
+\label{eq:trace}
+\end{equation}
+where $\bar o_{[t_{i-1},t_i)}$ is a condensed record of the observations received during the option (the set of elements that entered the perceptual field, with locators and times), $\mathrm{outcome}_i$ records whether the option terminated and with what result, and $\mathrm{cost}_i$ records steps, attempts, and tokens. Beliefs are extracted from traces; traces are retained because they are the unit consumed by the across-episode memory developed in the next section.
+
+The memory store at time $t$ is $\calM_t=(\calB_t,\{\Trace_i\}_{t_i\le t})$, with $\calB_t$ the current set of beliefs keyed by $(\id,\loc)$.
+
+\subsection{Memory operations within an episode}
+\label{sec:type1-ops}
+
+\paragraph{Initialization.}
+At $t=0$,
+\begin{equation}
+\calB_0=\Write(\emptyset,\,o_0)\;\cup\;\{b:\prov(b)=\mathrm{given}\},
+\end{equation}
+where the first term applies the write operation below to the initial observation (elements initially in the perceptual field become beliefs as soon as they leave it) and the second term enters every element asserted by the task description as a belief with provenance \emph{given}, its stated locator if any, and status \emph{unknown} if no locator is stated. In the persistent-instance regime, $\calB_0$ may additionally be seeded from the previous episode's terminal beliefs with $\vol=\mathrm{permanent}$ and $\prov=\mathrm{observed}$; this is the only channel through which Type 1 memory crosses an episode boundary, and it is treated as an option of the across-episode memory rather than of Type 1 itself.
+
+\paragraph{Write.}
+Writes are triggered at two kinds of events.
+\begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Option termination} (mandatory). When $\omega_i$ terminates at $t_i$, the trace $\Trace_i$ is assembled and a write module updates the belief set,
+\begin{equation}
+\calB_{t_i}\sim\llm{write}(\cdot\mid\calB_{t_{i-1}},\omega_i,\bar o_{[t_{i-1},t_i)},\sA_{t_i}),
+\label{eq:write}
+\end{equation}
+which (i) adds a belief for every element that entered and then left the perceptual field during the option, (ii) updates $\loc$, $\attr$, $t_{\mathrm{obs}}$ of existing beliefs that were re-observed, (iii) sets $\stat=\mathrm{consumed}$ for elements the option depleted, inferred from the option and the change in $\sA$, and (iv) adds or extends region beliefs covering the space traversed.
+\item \emph{Salience} (event-triggered). An option may traverse elements irrelevant to it but relevant to the task or to future options. Waiting for termination risks losing them from the condensed record. A lightweight salience test on observation deltas, namely the appearance in $\FP$ of an element type not present in $\calB$, triggers an immediate write of that element with its current locator. The test is a rule on the structured observation and involves no LLM call.
+\end{enumerate}
+Writes are updates keyed by $(\id,\loc)$ rather than appends: re-observing an element refreshes its belief rather than duplicating it, and a belief whose element is not found at its locator when the agent is within sensing range of $\loc$ has its status set to \emph{unknown}. This last rule is the mechanism by which a plan that depends on a remembered element discovers that the element is gone (Section~\ref{sec:replan}).
+
+\paragraph{Read.}
+A read returns the remembered component of a state estimate for a given consumer,
+\begin{equation}
+\sM_t=\Read(\calM_t,c)\subseteq\calB_t,
+\label{eq:read}
+\end{equation}
+where the context $c$ is the task goal for the planner root, the option being expanded for the option generator and dynamics predictor, and the option being executed for the executor. Retrieval ranks beliefs by relevance to $c$ and discounts them by staleness, $(t-t_{\mathrm{obs}})$ relative to the belief's volatility class, with \emph{permanent} beliefs undiscounted. In small memories $\Read$ returns all beliefs with status \emph{extant}; as $\calB_t$ grows, a fixed budget of beliefs is admitted per read, ranked by an LLM-scored or embedding-based relevance to $c$. The store itself is never placed in a prompt; only the read view is.
+
+\paragraph{End of episode.}
+At episode termination, beliefs are partitioned by volatility and provenance. Observed, permanent beliefs are retained for possible seeding of the next episode in the persistent-instance regime; all other beliefs are discarded. The option traces $\{\Trace_i\}$ are handed to the across-episode memory. The terminal belief set $\calB_T$ is also retained as an evaluation artifact: comparing it against the true state yields recall at delay as defined in Section~\ref{sec:tasks}.
+
+\subsection{Interaction with planning and execution}
+\label{sec:type1-interaction}
+
+Type 1 memory changes the base system in five places.
+
+\paragraph{State construction and the root.}
+Every state estimate consumed by a module is constructed as in (\ref{eq:state-estimate}) with the read context of that module. In particular, the search root is
+\begin{equation}
+\shat_0=(o_0|_{\FA},\,o_0|_{\FP},\,\Read(\calM_0,g)),
+\end{equation}
+and when planning is re-invoked at option boundary $t_i$ (Section~\ref{sec:replan}), the root is $\shat_{t_i}$ constructed in the same way from $o_{t_i}$ and $\calM_{t_i}$.
+
+\paragraph{Dynamics prediction over beliefs.}
+Because $\sM$ is part of the state, the dynamics predictor (\ref{eq:dyn}) must predict how the remembered component changes under an option. Its output is now a full record $(\hat{s}^{\mathrm{A}},\hat{s}^{\mathrm{P}},\hat{s}^{\mathrm{M}})$, and the prompt instructs it to produce $\hat{s}^{\mathrm{M}}$ by editing the parent's beliefs: an option that returns to and depletes a remembered element sets its status to \emph{consumed}; an option that moves the agent away from perceived elements moves them from $\hat{s}^{\mathrm{P}}$ to $\hat{s}^{\mathrm{M}}$; and an exploratory option (``search the region north of the current position for ore'') may add beliefs about elements the agent is predicted to find. Beliefs created in the tree carry $\prov=\mathrm{imagined}$. They are visible to all modules operating on descendant nodes, so the search can plan over information-gathering options, but they are discarded with the tree and are never written to $\calM_t$. The distinction is exposed to the feasibility and reward modules so that plans resting on imagined beliefs are not scored as if the elements were known.
+
+\paragraph{Feasibility and reward.}
+The feasibility module (\ref{eq:generator}) receives the read view and judges options that refer to remembered elements as feasible only if a belief with $\stat=\mathrm{extant}$ and a locator exists, with imagined and stale beliefs reported as such. The reward questions $\calQ$ (\ref{eq:reward}) are extended with questions that credit an option for resolving uncertainty relevant to the goal (converting an \emph{unknown} belief to \emph{extant} with a locator) and debit an option that relies on an imagined belief. Both modules therefore treat memory as part of the state rather than as auxiliary context.
+
+\paragraph{Execution with locators.}
+When option $\omega_i$ names a remembered element, the code-synthesis module receives the element's belief, and in particular its locator, as part of $\shat_t$: $\pi^{(1)}_{\omega_i}\sim\llm{code}(\cdot\mid\shat_t,\omega_i)$ with $\shat_t\supseteq\Read(\calM_t,\omega_i)$. The generated code navigates to $\loc$ using the control primitives rather than searching. If the element is not found on arrival, the executor's error feedback is also a write event that sets the belief's status to \emph{unknown}, and the option's failure is reported to the replanning monitor.
+
+\paragraph{Termination.}
+The termination predictor $\llm{term}$ and the in-option termination predicate $\llm{\beta}$ are unchanged in form but receive the constructed $\shat$; a goal that requires a remembered element to be in a given state (e.g., delivered to a remembered location) can now be judged from the belief set.
+
+\subsection{Replanning}
+\label{sec:replan}
+
+With $\shat_t$ maintained at every option boundary, planning need not be one-shot. Replanning after every option is unaffordable, since a planning call costs more LLM tokens than the execution of an entire plan; instead, a cheap \emph{monitor} runs at every option termination and invokes the planner only when it fires.
+
+\paragraph{Monitor.}
+At the termination $t_i$ of option $\omega_i$, the monitor has two states available: the state $\shat_i$ that the tree predicted for this node during planning, and the state $\shat_{t_i}$ that Type 1 memory has constructed from observation. Let $\omega_{i+1},\dots,\omega_n$ be the remaining planned options and let $\Rel(\omega)\subseteq\calF$ denote the \emph{relevance set} of an option: the features that condition its feasibility and its effects (formalized as part of the option signature in Section~\ref{sec:signature}; it is obtained by prompting an LLM once per distinct option string). The monitor compares predicted and observed states only on the relevance set of the plan tail,
+\begin{equation}
+\Rel(\omega_{i+1:n})=\textstyle\bigcup_{j=i+1}^{n}\Rel(\omega_j),\qquad
+\dist_i=\big\|\shat_i|_{\Rel(\omega_{i+1:n})}-\shat_{t_i}|_{\Rel(\omega_{i+1:n})}\big\|,
+\label{eq:monitor}
+\end{equation}
+where $\|\cdot\|$ counts disagreeing features, with quantity features compared against the thresholds required by the tail. Divergence outside the tail's relevance set is ignored by construction.
+
+\paragraph{Triggers.}
+Replanning is invoked when any of the following holds.
+\begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Plan invalidation.} $\dist_i>0$ and the feasibility module, applied to the next planned option in the observed state, $\llm{feas}(\cdot\mid\shat_{t_i},\omega_{i+1})$, returns a modified option. The distance is a filter that avoids the LLM call when nothing relevant has changed.
+\item \emph{Execution failure.} $\omega_i$ reached its attempt cap without terminating, or terminated with a failure outcome.
+\item \emph{Belief invalidation.} A belief in $\Rel(\omega_{i+1:n})$ changed status to \emph{unknown} during $\omega_i$, by the write rule of Section~\ref{sec:type1-ops} or by executor feedback. This is a special case of the first trigger that can fire without any change in $\sA$ or $\sP$.
+\item \emph{Opportunity.} A salience write during $\omega_i$ added a belief whose relevance score to the goal $g$ (the same score used by $\Read$) exceeds a threshold and whose element is not referenced by the plan tail. This trigger improves on a still-valid plan rather than repairing a broken one.
+\item \emph{Horizon exhaustion.} The next planned option lies beyond the expanded prefix of the tree, i.e., it was produced by a rollout rather than by expansion. Options in the rollout tail were selected greedily by $\hat r$ without search and are of lower quality; reaching them is treated as a scheduled replanning point.
+\end{enumerate}
+
+\paragraph{Graded replanning.}
+The cost of a replanning call is proportional to how much of the existing tree can be reused, which in turn depends on how far the observed state is from the tree's predictions. Three cases are distinguished at trigger time, in increasing cost.
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Re-root.} If some child of the current node has predicted state agreeing with $\shat_{t_i}$ on $\Rel(\omega_{i+1:n})$, the tree is re-rooted at that child, retaining its subtree and $Q$-values, and search continues for a reduced number of iterations.
+\item \emph{Re-root with a new state.} Otherwise, a new root with state $\shat_{t_i}$ is created; expansions cached during the original search whose parent state agrees with $\shat_{t_i}$ on the relevant features are reused, and the remainder of the search proceeds as usual.
+\item \emph{Fresh tree.} If a belief referenced by the plan tail has been invalidated, cached expansions that depend on it are discarded and the search is run from $\shat_{t_i}$ with the full iteration budget.
+\end{itemize}
+
+\paragraph{Commitment.}
+The opportunity trigger in particular can cause oscillation between plans. Two rules limit it. First, at most one replanning call is made per option termination. Second, after a replanning call triggered by opportunity or horizon exhaustion, the new plan replaces the current one only if the $Q$-value of its first option at the new root exceeds the estimated remaining value of the current plan by a margin $\eta$; after invalidation or failure triggers the new plan is adopted unconditionally.
+
+\paragraph{Bookkeeping.}
+Every monitor evaluation produces a labeled pair $(\shat_i,\shat_{t_i})$ of predicted and observed states for the executed option, and every trigger is recorded in the option trace. These records are the primary input of the across-episode memory.
+
+\section{Across-Episode Memory: Experience over Options}
+\label{sec:type2}
+
+Type 1 memory remembers the world. The memory developed in this section (\emph{Type 2 memory}) remembers what happened when the agent acted in it, paired with what the agent predicted would happen. Its purpose is to improve every prompting module of the planner and executor from the agent's own experience, across episodes of the same task and across tasks, without updating model parameters. The section first defines the key under which experience is stored and retrieved, then the memory unit and its consolidated forms, the operations that maintain it across the task sequence, and its interaction with the planner, the executor, and Type 1 memory.
+
+\subsection{Signatures}
+\label{sec:signature}
+
+Experience from one state is useful in another only if the two states agree on whatever determines the outcome of the option in question. A signature makes this equivalence explicit.
+
+\paragraph{Canonical options.}
+Options are natural-language strings, and semantically equivalent strings must map to a common key. A canonicalization module $\bar\omega=\mathrm{canon}(\omega)\sim\llm{canon}(\cdot\mid\omega,\{\bar\omega'\})$ maps an option to an existing canonical form from the set $\{\bar\omega'\}$ already in the store, or to a new normalized form if none matches. Task-specific parameters are folded into the canonical form (``gather $\ge 8$ logs'' rather than ``gather logs'' with the quantity elsewhere), so that the abstraction defined below can be fixed per canonical option. The mapping is cached, and all downstream keys use $\bar\omega$.
+
+\paragraph{Relevance set and value abstraction.}
+Each canonical option carries a \emph{schema} $(\Rel(\bar\omega),\alpha_{\bar\omega})$ consisting of
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item a \emph{relevance set} $\Rel(\bar\omega)=\Rel_{\mathrm{pre}}(\bar\omega)\cup\Rel_{\mathrm{eff}}(\bar\omega)\subseteq\calF$, where $\Rel_{\mathrm{pre}}$ contains the features that condition whether the option can be executed (required possessions, required tool tier, the status and locator of the element it refers to) and $\Rel_{\mathrm{eff}}$ the features that modulate its effect (the quantity available at the element, the agent's carrying capacity); and
+\item a \emph{value abstraction} $\alpha_{\bar\omega}$ that maps the raw value of each feature in $\Rel(\bar\omega)$ to an equivalence class: quantities to threshold buckets relative to the option's requirement, tool-like attributes to tiers, locators to $\{\mathrm{known},\mathrm{unknown}\}$, belief status to $\{\mathrm{extant},\mathrm{consumed},\mathrm{unknown}\}$.
+\end{itemize}
+The schema is produced once per canonical option by a prompting module $\llm{schema}(\cdot\mid\bar\omega,\calF)$ and cached; it is never re-derived at write or read time, which guarantees that the same option yields the same key structure throughout the task sequence.
+
+\paragraph{Signature and key.}
+The signature of a state estimate with respect to a canonical option is the abstracted projection
+\begin{equation}
+\sigma_{\bar\omega}(\shat)=\alpha_{\bar\omega}\big(\shat|_{\Rel(\bar\omega)}\big),
+\label{eq:signature}
+\end{equation}
+and the \emph{experience key} is the pair
+\begin{equation}
+\kappa=(\bar\omega,\sigma_{\bar\omega}(\shat)),
+\label{eq:key}
+\end{equation}
+serialized in a canonical feature order so that it is hashable. Since $\Rel(\bar\omega)$ is a small subset of $\calF$ and $\alpha_{\bar\omega}$ is coarse, many distinct states share a key, which is what allows experience to transfer.
+
+\paragraph{Sufficiency and minimality.}
+Let $\Delta$ denote the option-level state change observed when $\bar\omega$ is executed from $\shat$. The signature is \emph{sufficient} for $\bar\omega$ if
+\begin{equation}
+p(\Delta\mid\shat,\bar\omega)=p(\Delta\mid\sigma_{\bar\omega}(\shat),\bar\omega),
+\label{eq:sufficient}
+\end{equation}
+i.e., the full state carries no information about the outcome beyond the signature, and \emph{minimal} if no strictly coarser relevance set or abstraction is sufficient. Sufficiency makes experiences stored under a common key exchangeable samples of one transition distribution, which is the condition under which their aggregation is meaningful; minimality maximizes the number of states that share a key. Neither property can be verified directly, but each has an observable proxy used below.
+
+\paragraph{Schema refinement.}
+An LLM-produced schema may omit a relevant feature. The omission manifests as a \emph{collision}: experiences stored under one key exhibit outcome variance that is explained by a feature outside $\Rel(\bar\omega)$. Between episodes, for each key whose outcome variance exceeds a threshold, the consolidation step searches the stored (unabstracted) start states for a feature $f\notin\Rel(\bar\omega)$ whose value co-varies with the outcome; if one is found, $f$ is added to $\Rel(\bar\omega)$, an abstraction for it is requested from $\llm{schema}$, and the key is split. Conversely, two keys differing in one feature whose outcome distributions are statistically indistinguishable are merged by coarsening $\alpha_{\bar\omega}$ on that feature. Refinement therefore moves the schema toward sufficiency and merging toward minimality, using only the agent's own experience. When a key is split, the experiences stored under it are re-keyed from their retained start states.
+
+\paragraph{Distance between keys.}
+For retrieval of near matches, the distance between two keys with the same canonical option is the weighted count of disagreeing signature features,
+\begin{equation}
+\dist(\kappa,\kappa')=\textstyle\sum_{f\in\Rel(\bar\omega)}w_f\,\mathbb{1}[\sigma_{\bar\omega}(\shat)_f\ne\sigma_{\bar\omega}(\shat')_f],
+\qquad w_f=\begin{cases}w_{\mathrm{pre}} & f\in\Rel_{\mathrm{pre}}(\bar\omega)\\ w_{\mathrm{eff}} & \text{otherwise},\end{cases}
+\label{eq:key-dist}
+\end{equation}
+with $w_{\mathrm{pre}}>w_{\mathrm{eff}}$, so that a near match that disagrees on a precondition is ranked below one that disagrees on an effect determinant. Keys with different canonical options are at infinite distance. Let $\mathrm{NN}_m(\kappa)$ denote the $m$ stored experiences with keys nearest to $\kappa$.
+
+\paragraph{Granularities.}
+The projection in (\ref{eq:signature}) is applied at three granularities, differing only in the relevance set: the \emph{option} signature $\Rel(\bar\omega)$ used for keys; the \emph{plan-tail} signature $\Rel(\omega_{i+1:n})$ used by the replanning monitor (\ref{eq:monitor}), which is the union over the remaining options; and the \emph{task} signature $\Rel(g)$, the union over the options expanded in the search tree for goal $g$, used as the state-equivalence key for reusing cached tree expansions across iterations and across episodes of the same task.
+
+\subsection{Memory unit}
+\label{sec:type2-unit}
+
+\paragraph{Option experiences.}
+The atomic unit is an \emph{option experience}, one per executed option,
+\begin{equation}
+x_i=\big(\kappa_i,\;\shat_{t_{i-1}}|_{\Rel(\bar\omega_i)},\;\hat\Delta_i,\;\hat\phi_i,\;\hat r_i,\;\Delta_i,\;\mathrm{outcome}_i,\;\mathrm{cost}_i,\;\pi^{\ast}_{\omega_i},\;\prov_i\big),
+\label{eq:experience}
+\end{equation}
+where $\kappa_i$ is the key at the option's start; the second entry is the unabstracted start state on the relevance set, retained for schema refinement; $\hat\Delta_i$, $\hat\phi_i$, and $\hat r_i$ are the transition, feasibility verdict, and reward that the dynamics, feasibility, and reward modules produced for this option at planning time; $\Delta_i$ is the observed transition, the difference between $\shat_{t_{i-1}}$ and $\shat_{t_i}$ over all three state components including belief changes; $\mathrm{outcome}_i$ and $\mathrm{cost}_i$ are as in the option trace (\ref{eq:trace}); $\pi^\ast_{\omega_i}$ is the in-option code of the final, terminating attempt, together with the error messages of the failed attempts; and $\prov_i$ records the task, episode, and option index, and the replanning trigger, if any, that fired at the option's termination. An experience is a labeled example for each module: $(\kappa,\hat\Delta,\Delta)$ for the dynamics predictor, $(\kappa,\hat\phi,\mathrm{outcome})$ for the feasibility module, $(\kappa,\hat r,\mathrm{cost})$ for the reward predictor, and $(\kappa,\pi^\ast)$ for code synthesis.
+
+Options that were proposed and judged infeasible during planning, and options whose execution failed, are recorded with the same structure. Negative experiences are what correct the option generator; a store restricted to successes would only reinforce it.
+
+\paragraph{Episode records.}
+Above experiences, one \emph{episode record} per episode,
+\begin{equation}
+E_{n,k}=\big(g_n,\;\shat_0,\;(\omega_1,\dots,\omega_{n'}),\;\{(i,\text{trigger}_i)\},\;\mathrm{succ},\;\mathrm{cost}\big),
+\label{eq:episode}
+\end{equation}
+stores the task, the initial state estimate, the sequence of options actually executed, the replanning events, and the outcome and total cost. At episode end the outcome is propagated to the episode's experiences as a flag, so that an option which executed successfully inside a failed plan is not credited as a good choice in that context.
+
+\paragraph{Consolidated layers.}
+Raw experiences are ground truth; four derived layers are what modules read.
+\begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Transition statistics} $T(\kappa)$: for each key, the count $n(\kappa)$, the empirical success rate, the distribution of attempts and cost, and an aggregate observed transition $\bar\Delta(\kappa)$ (feature-wise mode for discrete features, median for quantities). This layer is where environment stochasticity is handled: a single failure of ``find a creature of type $c$'' is an observation, five failures in six executions is a rate.
+\item \emph{Semantic rules} $\mathcal{K}$: statements that generalize beyond a single key, of three kinds---preconditions (``$\bar\omega$ requires $f=v$''), effects (``$\bar\omega$ yields $\Delta$ under $\sigma$''), and world regularities (``elements of type $c$ are found in regions of type $c'$''). Each rule carries a support count and the keys it was distilled from.
+\item \emph{Procedural library} $P(\kappa)$: verified in-option code indexed by key, with the number of times it has terminated its option without refinement.
+\item \emph{Plan library} $L(g)$: for each task, the option sequences of successful episodes with their costs.
+\end{enumerate}
+The store is $\mathcal{X}=(\{x_i\},\{E_{n,k}\},T,\mathcal{K},P,L)$.
+
+\subsection{Operations across episodes}
+\label{sec:type2-ops}
+
+\paragraph{Initialization.}
+At the start of the task sequence the store is empty except for the procedural library, which may be seeded with an existing library of verified control programs if one is available for the environment; each seeded program is entered with its option and a key derived from its documented preconditions. The LLM is the prior for every other module, and the store exists to correct that prior; seeding the store from the LLM would be circular.
+
+\paragraph{Write.}
+Writes occur at three cadences.
+\begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Option termination.} The experience $x_i$ is assembled from the option trace $\Trace_i$ of Type 1 memory, the predictions stored at the corresponding tree node, the monitor's predicted-observed pair, and the executor's attempt history. The key is computed with the cached schema of $\bar\omega_i$; $T(\kappa_i)$ is updated online, and $P(\kappa_i)$ is updated if the final attempt terminated the option.
+\item \emph{Episode end.} The record $E_{n,k}$ is written, the outcome flag is propagated to the episode's experiences, and on success the executed sequence is added to $L(g_n)$.
+\item \emph{Between episodes.} Consolidation runs offline: (i) schema refinement and merging as in Section~\ref{sec:signature}; (ii) rule distillation, $\mathcal{K}\leftarrow\llm{consolidate}(\cdot\mid\mathcal{K},C)$, applied to clusters $C$ of experiences grouped by canonical option, with priority to clusters containing failures or large prediction divergence $\|\hat\Delta-\Delta\|$, since these are where the prior is wrong; (iii) bounding of the raw store by retaining, per key, a fixed-size reservoir of experiences plus all experiences referenced by a rule.
+\end{enumerate}
+
+\paragraph{Read.}
+A read for key $\kappa$ returns
+\begin{equation}
+\Read(\mathcal{X},\kappa)=\big(T(\kappa),\;\mathrm{NN}_m(\kappa),\;\mathcal{K}(\kappa),\;P(\kappa)\big),
+\label{eq:type2-read}
+\end{equation}
+the exact-match statistics, the $m$ nearest experiences under (\ref{eq:key-dist}), the rules whose antecedents mention $\bar\omega$ or a feature in $\Rel(\bar\omega)$, and the verified code. A read for task $g$ additionally returns $L(g)$. Each module receives the parts of the read view relevant to it; as with Type 1, the store is never placed in a prompt.
+
+\paragraph{Precedence.}
+The rule that decides between the LLM prior and stored experience is the mechanism by which the system improves without gradient updates, and is stated once for all modules. By default, precedence is \emph{soft}: the read view enters the module's prompt as evidence and the module's output remains a sample from the LLM. For the dynamics and feasibility modules, precedence becomes \emph{hard} when the exact-match count is sufficient, $n(\kappa)\ge n_0$: the module's output is replaced by the empirical aggregate, and the LLM is not called. The threshold $n_0$ trades the LLM's generalization against the store's specificity and is the single parameter that interpolates between a prompting-only system ($n_0=\infty$) and a tabular one ($n_0=1$).
+
+\subsection{Interaction with planning and execution}
+\label{sec:type2-interaction}
+
+Each module of Section~\ref{sec:base} becomes retrieval-augmented; the conditioning is extended and the prompt template is amended to describe the retrieved evidence. Writing $\kappa$ for the key of the state and option under consideration:
+\begin{itemize}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Option generator.} $\llm{propose}(\cdot\mid\tau_{i-1},\Omega^{+},\Omega^{-},L(g))$, where $\Omega^{+}$ and $\Omega^{-}$ are the sets of canonical options with high and with repeatedly low empirical success in $T$ under $\sigma_{\bar\omega}(\shat_{i-1})$: canonical options with high empirical success from the current state are offered as candidates, options with repeated failure are listed as candidates to avoid, and for a task with a non-empty plan library the successful sequences are offered as templates. The feasibility module receives $T(\kappa)$ and $\mathcal{K}(\kappa)$ and, under hard precedence, returns the empirical verdict.
+\item \emph{Dynamics predictor.} $\llm{dyn}(\cdot\mid\shat_{i-1},\omega,\mathrm{NN}_m(\kappa),\mathcal{K}(\kappa))$ under soft precedence; $\shat_i=\shat_{i-1}\oplus\bar\Delta(\kappa)$ under hard precedence, where $\oplus$ applies the aggregate delta. This is the direct remedy for compounding prediction error: along any segment of a rollout that passes through experienced keys, the predicted trajectory is anchored to observed transitions rather than extrapolated by the LLM.
+\item \emph{Reward predictor.} The evaluation questions in (\ref{eq:reward}) receive the empirical cost and attempt distribution at $\kappa$, so that options with a history of expensive execution are debited accordingly.
+\item \emph{Executor.} On a hit in $P(\kappa)$ the verified code is executed first; code synthesis is invoked only on a miss or on failure of the verified code, in which case the refinement loop proceeds from the verified code rather than from scratch.
+\item \emph{Replanning monitor.} The monitor receives the variance of $\Delta$ at the keys of the plan tail. A high-variance option is a predicted source of divergence; the horizon-exhaustion trigger is advanced to fire before such an option rather than after, so that the search that follows it is performed from an observed rather than a predicted state.
+\end{itemize}
+
+\subsection{Interaction with Type 1 memory}
+\label{sec:type1-type2}
+
+The two memories exchange information in both directions.
+
+\paragraph{From Type 1 to Type 2.}
+Type 1 supplies the raw material of every experience: the option trace (\ref{eq:trace}), the observed transition $\Delta_i$ (computed from the state estimates it constructs, and therefore including belief changes), and the monitor's predicted-observed pairs. Belief invalidation events---beliefs whose status became \emph{unknown}---are recorded as a distinguished class of experience, keyed by element type and by the elapsed time since $t_{\mathrm{obs}}$.
+
+\paragraph{From Type 2 to Type 1.}
+Three channels feed back.
+\begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
+\item \emph{Seeding.} In the persistent-instance regime, observed permanent beliefs retained at the end of episode $(n,k)$ are written to $\calB_0$ of episode $(n,k+1)$, as anticipated in Section~\ref{sec:type1-ops}. Whether a belief is written back is decided by Type 2 from the belief's element type and the invalidation record for that type.
+\item \emph{Volatility estimation.} Type 1 assigns volatility classes by LLM judgment from element type. The invalidation record yields, for each element type, an empirical survival distribution over elapsed time; once the record for a type is sufficiently large, the LLM-assigned class is replaced by an empirical staleness discount, and the read operation (\ref{eq:read}) uses the empirical discount.
+\item \emph{Salience tuning.} The salience trigger of Section~\ref{sec:type1-ops} fires on element types absent from the belief set. Type 2 supplies a list of element types that appear in $\Rel_{\mathrm{pre}}$ of options in successful plans; the trigger is restricted to these types once the list is non-empty, reducing writes for element types that have never mattered.
+\end{enumerate}
+
+\subsection{Behavior under the task structure}
+\label{sec:type2-tasks}
+
+\paragraph{Within a task.}
+Episode $(n,k)$ reads experiences from episodes $(n,1),\dots,(n,k-1)$. The plan library and procedural library dominate: the option generator is offered a sequence that has succeeded, the executor finds verified code at most keys, and in the persistent-instance regime the dynamics module finds exact-match keys along the entire plan. The expected effect is that planning tokens fall toward the cost of tree reuse, attempts fall toward one per option, and success saturates, all as a function of $k$ and with no parameter updates. In the resampled-instance regime, $P$ and $\mathcal{K}$ transfer but element-level beliefs do not, so the dynamics module relies on aggregate transitions whose locator features are abstracted to $\{\mathrm{known},\mathrm{unknown}\}$; the within-task curve is expected to rise more slowly.
+
+\paragraph{Across tasks.}
+Episode $(n,1)$ reads experiences from tasks $g_1,\dots,g_{n-1}$ only. The plan library is empty for $g_n$, so transfer is carried entirely by the signature-keyed layers $T$, $\mathcal{K}$, and $P$, through canonical options shared between tasks. In compositional task suites the shared options are the prerequisite chains (acquire a tool, gather a resource, reach an element of a given type), which are exactly the steps on which one-shot planning is most often wrong. The across-task curve is therefore a direct measure of whether signatures generalize; the plan library can be disabled to isolate it, and the task order can be varied to measure sensitivity to curriculum.
+
+\paragraph{Layers as ablations.}
+Each consolidated layer and each feedback channel to Type 1 can be disabled independently, and hard precedence can be disabled by setting $n_0=\infty$. These switches define the ablation study of the experimental section: they separate the contribution of remembering solutions (the plan library) from the contribution of remembering transitions (statistics under signatures), which is the claim on which the across-task axis rests.
+
+\end{document}

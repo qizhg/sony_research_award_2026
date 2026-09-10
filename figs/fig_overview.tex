@@ -1,0 +1,94 @@
+% System overview: state memory (Type 1), experience memory (Type 2), planner, executor, monitor.
+\begin{tikzpicture}[
+  font=\small,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, minimum height=8mm},
+  core/.style={box, fill=white, draw=black!70, minimum width=24mm},
+  sub1/.style={box, fill=white, draw=NavyBlue!70, minimum width=23mm, font=\footnotesize},
+  sub2/.style={box, fill=white, draw=BurntOrange!90!black, minimum width=23mm, font=\footnotesize},
+  band1/.style={draw=NavyBlue!70, fill=NavyBlue!7, rounded corners=3pt, inner sep=5pt},
+  band2/.style={draw=BurntOrange!90!black, fill=BurntOrange!9, rounded corners=3pt, inner sep=5pt},
+  flow/.style={-{Latex[length=2mm]}, thick, black!75},
+  w1/.style={-{Latex[length=2mm]}, thick, NavyBlue!85!black},
+  w2/.style={-{Latex[length=2mm]}, thick, BurntOrange!90!black},
+  r1/.style={-{Latex[length=2mm]}, thick, NavyBlue!85!black, dashed},
+  r2/.style={-{Latex[length=2mm]}, thick, BurntOrange!90!black, dashed},
+  lbl/.style={font=\scriptsize, inner sep=1.5pt, align=center},
+  tlab/.style={font=\tiny, inner sep=1.5pt, align=center},
+]
+
+% ================= middle row =================
+\node[core] (env)  at (0,0)    {Environment\\instance $\calE$};
+\node[core] (plan) at (4.2,0)  {Planner\\[-2pt]{\footnotesize MCTS over options}\\[-3pt]{\tiny $\llm{propose},\llm{feas},\llm{dyn},$}\\[-3pt]{\tiny $\llm{term},\llm{reward}$}};
+\node[core] (exec) at (11.0,0) {Executor\\[-2pt]{\footnotesize call-and-return}\\[-3pt]{\tiny $\llm{code},\ \llm{\beta}$}\\[-3pt]{\tiny\phantom{x}}};
+\node[box, fill=white, draw=black!70, font=\footnotesize, minimum width=23mm] (mon) at (7.8,1.85)
+  {Monitor\\[-2pt]{\tiny $\shat_i$ vs.\ $\shat_{t_i}$ on $\Rel(\omega_{i+1:n})$}};
+
+% ================= top band: Type 1 =================
+\node[sub1] (bel) at (4.2,4.4) {beliefs $\calB_t$\\[-2pt]{\tiny $(\attr,\loc,\tobs,$}\\[-3pt]{\tiny $\prov,\vol,\stat)$}};
+\node[sub1] (est) at (7.7,4.4) {state estimate\\[-1pt]{\scriptsize $\shat_t=(\sA_t,\sP_t,\sM_t)$}};
+\begin{scope}[on background layer]
+  \node[band1, fit=(bel)(est)] (band1) {};
+\end{scope}
+\node[NavyBlue!85!black, font=\footnotesize\bfseries, anchor=west] at ([yshift=3.2mm]band1.north west)
+  {Type 1: state memory\ \ {\normalfont\footnotesize (the world; lifetime: one episode)}};
+
+% option trace, outside both memories
+\node[box, fill=black!4, draw=black!60, font=\footnotesize, minimum width=25mm] (trc) at (11.9,4.4)
+  {option trace $\Trace_i$\\[-2pt]{\tiny $\mathrm{pred}_i$, attempts,}\\[-3pt]{\tiny $\shat_{t_{i-1}},\shat_{t_i}$, outcome}};
+
+% ================= bottom band: Type 2 =================
+\node[sub2] (xp)   at (4.2,-4.0)  {experiences $\{x\}$\\[-2pt]{\tiny $(\kappa,\hat\Delta,\Delta,\mathrm{outcome},\pi^\ast,\dots)$}};
+\node[sub2] (stat) at (7.6,-4.0)  {summaries $S(\kappa)$, $S(\mathrm{type})$\\[-2pt]{\tiny aggregates of $\{x\}$}};
+\node[sub2] (lib)  at (11.0,-4.0) {rules $\calK$\\[-2pt]{\tiny distilled across keys}};
+\begin{scope}[on background layer]
+  \node[band2, fit=(xp)(stat)(lib)] (band2) {};
+\end{scope}
+\node[BurntOrange!90!black, font=\footnotesize\bfseries, anchor=west] at ([yshift=-3.2mm]band2.south west)
+  {Type 2: experience memory\ \ {\normalfont\footnotesize (what happened; lifetime: unbounded)}};
+
+% ================= environment / executor loop =================
+\draw[flow] (11.0,-0.78) -- (11.0,-1.95) -- (0,-1.95) -- (env.south);
+\node[lbl, below] at (5.4,-1.97) {primitive actions $a_t$};
+
+\draw[w1] (env.north) -- (0,4.4) -- (bel.west);
+\node[lbl, above, align=center] at (1.5,4.44) {observations $o_t$\\[-2pt]{\tiny step update, every $t$}};
+
+% ================= Type 1 internal =================
+\draw[r1] (bel) -- (est);
+\node[tlab, below] at (5.95,4.3) {read};
+
+% ================= Type 1 -> planner / executor =================
+\draw[r1] (7.3,3.88) -- (7.3,2.75) -- (4.2,2.75) -- (4.2,0.78);
+\node[lbl, above] at (5.75,2.78) {root $\shat_0$ / $\shat_{t_i}$};
+
+\draw[r1] (8.1,3.88) -- (8.1,1.15) -- (10.4,1.15) -- (10.4,0.78);
+\node[lbl, above] at (9.1,1.18) {$\shat_t$, locators};
+
+% ================= planner -> executor; trace -> monitor -> planner =================
+\draw[flow] (plan) -- (exec);
+\node[lbl, above] at (7.6,0.06) {plan $(\omega_1,\dots,\omega_n)$};
+
+\draw[flow] (11.0,0.78) -- (11.0,3.9);
+\node[lbl, right, align=center] at (11.05,2.4) {attempts,\\snapshots};
+
+\draw[flow] (10.65,4.4) -- (9.7,4.4) -- (9.7,1.85) -- (mon.east);
+\node[tlab, left] at (9.65,3.0) {$\mathrm{pred}_i$ vs.\ $\shat_{t_i}$};
+
+\draw[flow] (mon.west) -- (3.3,1.85) -- (3.3,0.78);
+\node[lbl, right] at (3.36,1.4) {replan};
+
+% ================= Type 2 reads =================
+\draw[r2] (7.2,-3.42) -- (7.2,-2.6) -- (4.9,-2.6) -- (4.9,-0.78);
+\node[lbl, left] at (4.85,-1.5) {$T,\ \mathrm{NN}_m,$\\$\calK,\ L$};
+
+\draw[r2] (10.5,-3.42) -- (10.5,-0.78);
+\node[lbl, left] at (10.45,-2.65) {code $P$};
+
+% ================= cross-memory channels =================
+\draw[w1] ([yshift=-3mm]band1.west) -- (-2.4,4.1) -- (-2.4,-4.0) -- (band2.west);
+\node[tlab, rotate=90] at (-2.6,0.4) {belief invalidations};
+\draw[w2] (13.15,4.4) -- (13.55,4.4) -- (13.55,-4.0) -- (band2.east);
+\node[tlab, rotate=90] at (13.75,0.4) {closed trace $\to$ experience $x$};
+\draw[w2] (12.35,-4.0) -- (12.35,-4.0);
+\draw[w2] (13.55,-1.2) -- (13.55,-1.2);
+\end{tikzpicture}
