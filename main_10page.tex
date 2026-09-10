@@ -223,15 +223,6 @@ A state estimate is a record
 \end{equation}
 where $\cdot|_{F}$ denotes the restriction of a record to $F\subseteq\calF$: the first two components are copied from the current observation. The third is read from a \emph{memory store} $\calM_t$, maintained by the memory of Section~\ref{sec:type1}, which holds the agent's current claims about the features in $\FM$---world elements perceived at some earlier step and since left behind, together with elements asserted by the task description---each recorded with its location, the time at which it was last observed, and whether it is still believed to be there. The dot in $\Read(\calM_t,\cdot)$ marks a second argument left open here: a read is always relative to a \emph{context}, the goal or the option on whose behalf the estimate is being built, and it returns only those claims that the context makes relevant. Thus $\sA_t$ and $\sP_t$ are determined by $o_t$ alone, whereas $\sM_t$ depends on both the store and the module reading it; Section~\ref{sec:type1-est} defines $\calM_t$ and $\Read$ and fills in this argument at each call site.
 
-
-\begin{figure}[t]
-\centering
-\input{figs/fig_pomdp}
-\caption{Spatial partial observability and the three-component state estimate. Left: the world is larger than the agent's sensing range. Elements inside the range (E) are in the perceptual field; elements seen earlier (A--C) and regions already traversed (D) are outside it and persist, change, or disappear unobserved. Right: the observation $o_t$ exposes only the agent state and the perceptual field; the remembered component $\sM_t$ exists only if maintained by memory, and it is what allows an option such as ``return to the lava and fill the bucket'' to be planned and executed.}
-\label{fig:pomdp}
-\end{figure}
-
-
 \paragraph{Terminology.}
 We use one term throughout, chosen to be domain-neutral. An \emph{element} is any world entity the agent can refer to: an object, a resource deposit, a creature, a structure, or a spatial region. An element has a type, attributes, and a location $\loc(\cdot)$, the information an option needs to re-access it: coordinates in a 3D world, a room in a building, a path or address in a software environment.
 
@@ -246,30 +237,15 @@ A task is a triple $(g,\calE,s_0)$: a natural-language goal $g$ with a success p
 \paragraph{Episodes.}
 The agent executes $K$ episodes of the task in sequence. Episode $k$ starts from $s_0$ in $\calE$ and runs until $\mathrm{succ}_g(s_t)=1$ or a budget is exhausted; it is scored by whether the success predicate was met. Every episode is executed in the same instance from the same initial state. Consequently, a world element found at a location in episode $k$ exists at that location in episode $k+1$ unless the agent consumed it, and element-level knowledge (as opposed to knowledge about element types) is transferable across episodes. This persistence is assumed throughout.
 
-
 \section{Memory for State Estimation}
 \label{sec:type1}
 
-\begin{figure}[tb]
-\centering
-\resizebox{\textwidth}{!}{\input{figs/fig_overview}}
-\caption{System overview. An option-level planner (MCTS whose modules are LLM prompts) and a call-and-return executor (LLM-generated code) are wrapped by two memories. Type 1 (top) is a recursive filter over beliefs: the step update folds every observation into the belief set, which supplies the third component $\sM_t$ of every state estimate. The per-option record (right) belongs to neither memory---nothing in Type 1 reads it---but holds, for each option, what the planner predicted and what execution did; it feeds the monitor and, at the option's termination, becomes an experience. Type 2 (bottom) keys those experiences by signature and is read into every prompt of the planner and executor, including at replanning calls within the same episode. Solid arrows are writes and control flow; dashed arrows are reads.}
-\label{fig:overview}
-\end{figure}
-
-This section develops the memory that maintains the state estimate $\shat_t$ (\emph{Type 1 memory}; Figure~\ref{fig:overview}, top). It remembers the world: its contents are claims about world elements, and its lifetime is one episode, since the true state of a persistent instance is reset to $s_0$ at every episode start. Section~\ref{sec:type1-est} defines the memory and the operations by which it performs state estimation, which run at two rates: a rule-based update at every time step, and an LLM consolidation at every option termination. Section~\ref{sec:type1-plan} describes how planning and execution are performed on the maintained state estimate. Section~\ref{sec:type1-replan} describes replanning, which the maintained estimate makes possible.
+This section develops the memory that maintains the state estimate $\shat_t$ (\emph{Type 1 memory}). It remembers the world: its contents are claims about world elements, and its lifetime is one episode, since the true state of a persistent instance is reset to $s_0$ at every episode start. Section~\ref{sec:type1-est} defines the memory and the operations by which it performs state estimation, which run at two rates: a rule-based update at every time step, and an LLM consolidation at every option termination. Section~\ref{sec:type1-plan} describes how planning and execution are performed on the maintained state estimate. Section~\ref{sec:type1-replan} describes replanning, which the maintained estimate makes possible.
 
 \subsection{State estimation at two rates}
 \label{sec:type1-est}
-\begin{figure}[t]
-\centering
-\input{figs/fig_estimation}
-\caption{The belief filter at its two rates. At every time step a rule-based update (\ref{eq:step}) folds the observation into the belief set: an element leaving the perceptual field becomes a belief, a re-observed element refreshes one, and a belief whose location is in range with the element absent becomes \emph{unknown}. At every option termination an LLM consolidation (\ref{eq:consol}) performs what rules cannot: attributing consumption to the option that caused it, and abstracting accumulated coverage into region beliefs with negative content. Line style shows belief status: solid \emph{extant}, dashed \emph{unknown}, grey \emph{consumed}. Because the update is recursive, no observation history is retained, yet the lava location written during $\omega_2$ is still available to execute $\omega_5$ three options later.}
-\label{fig:estimation}
-\end{figure}
 
-
-The state estimate is maintained by a recursive filter over \emph{beliefs}, claims about world elements outside the perceptual field, which constitute the remembered component $\sM_t$ of (\ref{eq:state-estimate}). The filter runs at two rates. At every time step, a rule-based update folds the current observation into the belief set; this is what makes $\sM_t$ a summary of the history $h_t$ rather than a record of it, and it keeps the estimate correct for consumers that read it mid-option. At every option termination, an LLM consolidation performs the updates that require inference rather than bookkeeping, and the option boundary additionally serves to snapshot the estimate for the planner's monitor and for the across-episode memory. Figure~\ref{fig:estimation} illustrates both rates over one episode.
+The state estimate is maintained by a recursive filter over \emph{beliefs}, claims about world elements outside the perceptual field, which constitute the remembered component $\sM_t$ of (\ref{eq:state-estimate}). The filter runs at two rates. At every time step, a rule-based update folds the current observation into the belief set; this is what makes $\sM_t$ a summary of the history $h_t$ rather than a record of it, and it keeps the estimate correct for consumers that read it mid-option. At every option termination, an LLM consolidation performs the updates that require inference rather than bookkeeping, and the option boundary additionally serves to snapshot the estimate for the planner's monitor and for the across-episode memory.
 
 \paragraph{Beliefs.}
 A belief is the memory's claim about one world element that is not currently in the perceptual field. It has two parts: an \emph{identity}, fixed for the life of the belief, under which the belief is stored and refreshed; and a \emph{content}, which observations update:
@@ -317,7 +293,6 @@ by four rules, all of which read the structured observation directly and involve
 \item \emph{Coverage.} The area swept by the sensing range is accumulated into the region beliefs covering it.
 \end{enumerate}
 Updates are keyed by $\iota$ rather than appended, so re-observing an element refreshes its belief rather than duplicating it; for location-keyed elements this is what the quantization $\cell(\cdot)$ buys, since the same element observed from different positions maps to the same cell.
-
 
 \paragraph{Consolidation.}
 Three updates cannot be expressed as rules on a single observation, and are performed once per option, at its termination, by an LLM:
@@ -419,13 +394,6 @@ Type 1 memory remembers the world. The memory developed in this section (\emph{T
 
 \subsection{Signatures}
 \label{sec:signature}
-\begin{figure}[t]
-\centering
-\input{figs/fig_signature}
-\caption{Signatures. (a) The signature of a state with respect to a canonical option is a projection onto the option's relevance set followed by a value abstraction; the great majority of the state is discarded, and quantities, tiers, and locations are replaced by the equivalence classes that matter for this option. (b) Because the projection is small and the abstraction coarse, many distinct states map to one key, and their experiences may be aggregated whenever the signature is sufficient in the sense of (\ref{eq:sufficient}). (c) When it is not, the omission shows up as outcome variance at a single key that co-varies with a feature outside the relevance set; consolidation adds that feature and splits the key.}
-\label{fig:signature}
-\end{figure}
-
 
 Experience from one state is useful in another only if the two states agree on whatever determines the outcome of the option in question. The key under which experience is stored must therefore capture that much of the state, and no more. Taking the full state estimate as the key satisfies the requirement trivially and is useless: with hundreds of features and continuous quantities, two states are essentially never identical, so every key would be written once and never retrieved, and the memory would be a log rather than a memory. Discarding too much fails in the opposite way: if the key drops a feature the outcome depends on, experiences filed under it mix incompatible cases---``mine $\ge 3$ iron'' succeeding with a stone pickaxe and failing with a wooden one---and their aggregate describes neither. What is wanted is the coarsest key that still separates outcomes: one that keeps those two cases apart, while collapsing into a single key the states that differ only in the agent's health or its stock of wood. A \emph{signature} is such a key. It is obtained by projecting the state onto the features that matter for the option and then abstracting the values of those features into equivalence classes; \emph{sufficiency} and \emph{minimality}, defined in (\ref{eq:sufficient}), make ``matter'' and ``coarsest'' precise, and the refinement step below drives the learned projections toward them.
 
@@ -450,7 +418,7 @@ and the \emph{experience key} is the pair
 \kappa=(\bar\omega,\sigma_{\bar\omega}(\shat)),
 \label{eq:key}
 \end{equation}
-serialized in a canonical feature order so that it is hashable. Since $\Rel(\bar\omega)$ is a small subset of $\calF$ and $\alpha_{\bar\omega}$ is coarse, many distinct states share a key, which is what allows experience to transfer (Figure~\ref{fig:signature}a,b).
+serialized in a canonical feature order so that it is hashable. Since $\Rel(\bar\omega)$ is a small subset of $\calF$ and $\alpha_{\bar\omega}$ is coarse, many distinct states share a key, which is what allows experience to transfer.
 
 \paragraph{Sufficiency and minimality.}
 The two properties that the construction is aiming at are stated as follows. Let $\Delta$ denote the state change observed when $\bar\omega$ is executed from $\shat$. The signature is \emph{sufficient} for $\bar\omega$ if
@@ -461,7 +429,7 @@ p(\Delta\mid\shat,\bar\omega)=p(\Delta\mid\sigma_{\bar\omega}(\shat),\bar\omega)
 i.e., the full state carries no information about the outcome beyond the signature, and \emph{minimal} if no strictly coarser relevance set or abstraction is sufficient. Sufficiency is what makes experiences stored under a common key exchangeable samples of one transition distribution, and therefore what makes aggregating them meaningful; minimality is what maximizes the number of states that share a key, and therefore how much transfer the key buys. Neither property can be verified directly, but each has an observable proxy, used by the refinement step below.
 
 \paragraph{Schema refinement.}
-An LLM-produced schema may omit a relevant feature. The omission manifests as a \emph{collision}: experiences stored under one key exhibit outcome variance that is explained by a feature outside $\Rel(\bar\omega)$. Between episodes, for each key whose outcome variance exceeds a threshold, the consolidation step searches the stored (unabstracted) start states for a feature $f\notin\Rel(\bar\omega)$ whose value co-varies with the outcome; if one is found, $f$ is added to $\Rel(\bar\omega)$, an abstraction for it is requested from $\llm{schema}$, and the key is split. Conversely, two keys differing in one feature whose outcome distributions are statistically indistinguishable are merged by coarsening $\alpha_{\bar\omega}$ on that feature. Refinement moves the schema toward sufficiency and merging toward minimality, using only the agent's own experience (Figure~\ref{fig:signature}c). When a schema changes, the experiences stored under the affected keys are re-keyed from their retained start states.
+An LLM-produced schema may omit a relevant feature. The omission manifests as a \emph{collision}: experiences stored under one key exhibit outcome variance that is explained by a feature outside $\Rel(\bar\omega)$. Between episodes, for each key whose outcome variance exceeds a threshold, the consolidation step searches the stored (unabstracted) start states for a feature $f\notin\Rel(\bar\omega)$ whose value co-varies with the outcome; if one is found, $f$ is added to $\Rel(\bar\omega)$, an abstraction for it is requested from $\llm{schema}$, and the key is split. Conversely, two keys differing in one feature whose outcome distributions are statistically indistinguishable are merged by coarsening $\alpha_{\bar\omega}$ on that feature. Refinement moves the schema toward sufficiency and merging toward minimality, using only the agent's own experience. When a schema changes, the experiences stored under the affected keys are re-keyed from their retained start states.
 
 \paragraph{Distance between keys.}
 For retrieval of near matches, the distance between two keys with the same canonical option is the number of disagreeing signature features,
@@ -516,21 +484,14 @@ Several objects that a plan-level reader might expect to find in the store are n
 \item The \emph{belief invalidations}, from which element persistence is estimated: a projection of the $\Delta$ fields.
 \end{itemize}
 
-
 \subsection{Operations}
 \label{sec:type2-ops}
-\begin{figure}[t]
-\centering
-\input{figs/fig_lifecycle}
-\caption{The experience memory over the episode sequence. Objects written at option termination---the experiences and the summaries $S(\cdot)$---are current within the episode that wrote them, so they are read by the next option and by every replanning call of the same episode. What consolidation produces---the refined schemas, the rules $\calK$, and the revisions of $S(\type)$ and of the seed set that Type 1 memory reads---becomes available one episode later. The episode boundary is therefore the only point at which the schema of a key changes, and the only channel through which the state memory of a new episode is seeded.}
-\label{fig:lifecycle}
-\end{figure}
 
 \paragraph{Initialization.}
 Before episode 1 the store is empty, with two exceptions. The verified-code field of $S(\kappa)$ may be seeded with an existing library of control programs if one is available for the environment; each seeded program is entered under a key derived from its documented preconditions. And $S(\type)$ is populated lazily: the first time an element type is encountered, its persistence class is assigned by prompting an LLM with the type, and its relevance flag is set. The LLM is the prior for everything else, and the store exists to correct that prior; seeding the store from the LLM would be circular.
 
 \paragraph{Write.}
-Writes occur at three cadences, summarized in the table below and, over the episode sequence, in Figure~\ref{fig:lifecycle}.
+Writes occur at three cadences, summarized in the table below.
 \begin{enumerate}[leftmargin=1.5em,itemsep=1pt]
 \item \emph{Option termination.} The experience $x$ is assembled from the planner's prediction $(\shat_i,\hat r_i)$ and the record of the option's execution. The canonical option and schema are looked up (created on first encounter), the key is computed, and $S(\kappa)$ is updated online, including its verified-code field if the final attempt terminated the option. The persistence statistics in $S(\type)$ are updated from the belief status changes carried by $\Delta$.
 \item \emph{Episode end.} The $\mathrm{flag}$ of the episode's experiences is set from the outcome. Nothing else is written: the episode record and the plan library are views (\ref{eq:store2}).
@@ -593,7 +554,6 @@ The two memories exchange information through the objects listed in the write ta
 \end{enumerate}
 
 Under this exchange, the only Type 1 quantities that depend on Type 2 are $\vol(b)$ (through the persistence field of $S(\type)$) and the initial contents of $\calB_0$ (through $\mathrm{Seed}_k$); the only Type 1 behaviour that depends on Type 2 is the pruning step of consolidation (through the relevance flag). All other Type 1 fields and operations are determined within the episode as specified in Section~\ref{sec:type1-est}.
-
 
 \section{Extension to Pixel Observations}
 \label{sec:pixels}
@@ -681,7 +641,6 @@ Executor & code over API primitives & code over API primitives, or over a primit
 \end{center}
 
 The extension leaves the two memories untouched because their inputs were defined on the state estimate rather than on the environment's native observation. What the pixel setting adds is a module that manufactures that estimate's inputs, an explicit account of what the agent can currently see, and one rule made tolerant of the fact that perception, unlike an API, can be wrong.
-
 
 \section{Evaluation Plan and Timeline}
 \label{sec:eval}
